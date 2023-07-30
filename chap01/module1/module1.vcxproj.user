@@ -4,24 +4,24 @@
     <LocalDebuggerEnvironment>PATH=%PATH%;D:\SDKs\glfw\bin
 $(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>-d -lVK_LAYER_NV_optimus,VK_LAYER_NV_nsight,VK_LAYER_NV_nsight-sys</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>-d </LocalDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LocalDebuggerEnvironment>PATH=%PATH%;D:\SDKs\glfw\bin
 $(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>-d -lVK_LAYER_NV_optimus,VK_LAYER_NV_nsight,VK_LAYER_NV_nsight-sys</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>-d </LocalDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LocalDebuggerEnvironment>PATH=%PATH%;D:\SDKs\glfw\bin
 $(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>-d -lVK_LAYER_NV_optimus,VK_LAYER_NV_nsight,VK_LAYER_NV_nsight-sys</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>-d </LocalDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LocalDebuggerEnvironment>PATH=%PATH%;D:\SDKs\glfw\bin
 $(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>-d -lVK_LAYER_NV_optimus,VK_LAYER_NV_nsight,VK_LAYER_NV_nsight-sys</LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>-d </LocalDebuggerCommandArguments>
   </PropertyGroup>
 </Project>

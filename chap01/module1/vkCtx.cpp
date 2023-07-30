@@ -15,34 +15,41 @@ vkCtx::vkCtx( std::vector<std::string>* pLayers, bool d) : m_debug(d), m_instanc
     enumerateLayers();
 
     // verify layers passed in are actually available, make a list of available layers (m_validationLayers)
-    for (auto name : *pLayers)
+    if (pLayers->size() > 0)
     {
-      bool bFound = false;
-
-      for (auto layer : m_layers)
+      for (std::string name : *pLayers)
       {
-        if (strcmp(name.c_str(), layer.layerName) == 0)
+        bool bFound = false;
+
+        for (VkLayerProperties layer : m_layers)
         {
-          bFound = true;
-          //m_validationLayers.push_back(name.c_str());
-          m_validationLayers.append(name.c_str());
-          m_validationLayers.append(1, '\0');
-          break;
+          if (strcmp(name.c_str(), layer.layerName) == 0)
+          {
+            bFound = true;
+            char* temp = new char[name.size() + 1];
+            memset((void*)temp, '\0', name.size() + 1);
+            memcpy(temp, name.c_str(), name.size() + 17);
+            m_validationLayers.push_back(temp);
+            break;
+          }
+        }
+
+        if (!bFound)
+        {
+          std::cout << "[-] requested validation layer " << name.c_str() << " is not available" << std::endl;
         }
       }
-
-      if (!bFound)
-      {
-        std::cout << "[-] requested validation layer " << name.c_str() << " is not available" << std::endl;
-      }
+    }
+    else
+    {
+      std::cout << "[ ] no validation layers provided" << std::endl;
     }
   }
-
-  std::copy(m_validationLayers.begin(), m_validationLayers.end(), std::ostream_iterator<char>(std::cout, ""));
 }
 
 vkCtx::~vkCtx()
 {
+  // TODO : delete strings in m_validationLayers
   vkDestroyInstance(m_instance, nullptr);
 }
 
@@ -69,11 +76,11 @@ VkResult vkCtx::init()
   createInfo.pApplicationInfo = &appInfo;
   createInfo.enabledExtensionCount = glfwExtensionCnt;
   createInfo.ppEnabledExtensionNames = glfwExtensionList;
-  if (m_debug)
+  if (m_debug && (m_validationLayers.size() >0 ))
   {
+    std::vector<const char*> layers = { "VK_LAYER_NV_optimus","VK_LAYER_NV_nsight","VK_LAYER_NV_nsight-sys" };
     createInfo.enabledLayerCount = static_cast<uint32_t>(m_validationLayers.size());
-    const char* layers = m_validationLayers.c_str();
-    createInfo.ppEnabledLayerNames = &layers;
+    createInfo.ppEnabledLayerNames = m_validationLayers.data();
   }
   else
   {
