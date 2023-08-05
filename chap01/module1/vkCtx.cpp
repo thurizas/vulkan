@@ -1,10 +1,18 @@
 #include <iostream>
 #include <algorithm>
 #include <iterator>
+#include <vulkan/vulkan.hpp>
 
 #include "vkCtx.h"
 #include <GLFW/glfw3.h>
-#define VK_QUEUE_VIDEO_ENCODE_BIT_KHR  0x00000040        // Provided by VK_KHR_video_encode_queue
+
+
+#define VK_MEMORY_PROPERTY_RDMA_CAPABLE_BIT_NV     0x00000100
+#define VK_MEMORY_PROPERTY_DEVICE_UNCACHED_BIT_AMD 0x00000080 
+#define VK_MEMORY_PROPERTY_DEVICE_COHERENT_BIT_AMD 0x00000040 
+#define VK_QUEUE_OPTICAL_FLOW_BIT_NV               0x00000100
+#define VK_QUEUE_VIDEO_DECODE_BIT_KHR              0x00000020
+#define VK_QUEUE_VIDEO_ENCODE_BIT_KHR              0x00000040        // Provided by VK_KHR_video_encode_queue
 
 
 

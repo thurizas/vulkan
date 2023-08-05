@@ -21,8 +21,8 @@ private:
   VkInstance                      m_instance;
   VkDevice                        m_suitableDevice;
   VkDevice                        m_logicalDevice;
-  //std::vector<const char*>        m_validationLayers;
-  std::string                     m_validationLayers;
+  std::vector<const char*>        m_validationLayers;
+  //std::string                     m_validationLayers;
   std::vector<VkLayerProperties>  m_layers;
   std::vector<VkPhysicalDevice>   m_physicalDevices;
   std::vector<std::pair<uint32_t, uint32_t>> m_suitableDevices;

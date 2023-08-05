@@ -14,7 +14,7 @@
 
 #ifdef __WIN32
 #include "XGetopt.h"
-#elif
+#else
 #include <unistd.h>
 #endif
 
