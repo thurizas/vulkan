@@ -13,11 +13,10 @@
 #include "vkCtx.h"
 
 #ifdef __WIN32
-#include "XGetopt.h"
+    #include "XGetopt.h"
 #else
-#include <unistd.h>
+    #include <unistd.h>
 #endif
-
 
 const uint32_t width = 800;
 const uint32_t height = 600;
@@ -27,21 +26,20 @@ void delWindow(GLFWwindow*);
 
 void glfwErrorHndr(int, const char*);                       // error handler for GLFW errors
 
-
-
 int main(int argc, char** argv)
 {
   bool                       debugMode = false;
   int                        choice = -1;
-  std::vector<std::string>   layers;
+  std::vector<std::string>   requistedLayers;
   GLFWwindow*      window = nullptr;
 
   while (-1 != (choice = getopt(argc, argv, "dl:")))
   {
     switch (choice)
     {
-      case 'd':
+      case 'd':                              // enabling debugging - add validation layer by default.
         debugMode = !debugMode;
+        requistedLayers.push_back("VK_LAYER_KHRONOS_validation");
         break;
 
       case 'l':
@@ -52,10 +50,14 @@ int main(int argc, char** argv)
         {
           std::string layer = argList.substr(0, nLoc);
           argList.erase(0, nLoc+1);
-          layers.push_back(layer);
+          // TODO : make sure layer being added is unique in list
+          requistedLayers.push_back(layer);
         }
         
-        if (argList.size() > 0) layers.push_back(argList);
+        if (argList.size() > 0)      // no comma found & still have a string -- push entire string
+        {
+          requistedLayers.push_back(argList);
+        }
         break;
       }
 
@@ -78,7 +80,7 @@ int main(int argc, char** argv)
   GLFWerrorfun oldHandler = glfwSetErrorCallback(glfwErrorHndr);  // register our custrom error handler
   if (initWindow(&window))                                        // create and instantiate the GLFW window
   {
-    vkCtx theApp(&layers, debugMode);
+    vkCtx theApp(&requistedLayers, debugMode);
 
     if (VK_SUCCESS == theApp.init())
     {

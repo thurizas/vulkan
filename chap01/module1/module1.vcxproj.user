@@ -4,24 +4,24 @@
     <LocalDebuggerEnvironment>PATH=%PATH%;D:\SDKs\glfw\bin
 $(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>-d </LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>-d -lVK_LAYER_LUNARG_api_dump</LocalDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LocalDebuggerEnvironment>PATH=%PATH%;D:\SDKs\glfw\bin
 $(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>-d </LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>-d -lVK_LAYER_LUNARG_api_dump</LocalDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LocalDebuggerEnvironment>PATH=%PATH%;D:\SDKs\glfw\bin
 $(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>-d </LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>-d -lVK_LAYER_LUNARG_api_dump</LocalDebuggerCommandArguments>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LocalDebuggerEnvironment>PATH=%PATH%;D:\SDKs\glfw\bin
 $(LocalDebuggerEnvironment)</LocalDebuggerEnvironment>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
-    <LocalDebuggerCommandArguments>-d </LocalDebuggerCommandArguments>
+    <LocalDebuggerCommandArguments>-d -lVK_LAYER_LUNARG_api_dump</LocalDebuggerCommandArguments>
   </PropertyGroup>
 </Project>

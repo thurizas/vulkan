@@ -1,6 +1,16 @@
 #ifndef _vkCtk_h_
 #define _vtCtk_h_
 
+/*
+ * creates and manages a new vulkan context.  A vulkan context manages:
+ *  (1) a list of enabled layers
+ *  (2) a list of vulkan compatable physical devices
+ *  (3) a set of attributes for each physical devices (memory, heap, flags)
+ *  (4) a logical device determined by the design requirements and the available 
+ *      physical devices
+ */
+
+
 #include <vulkan/vulkan.hpp>
 
 #include <cstdint>
@@ -21,8 +31,7 @@ private:
   VkInstance                      m_instance;
   VkDevice                        m_suitableDevice;
   VkDevice                        m_logicalDevice;
-  std::vector<const char*>        m_validationLayers;
-  //std::string                     m_validationLayers;
+  char*                           m_validationLayers;
   std::vector<VkLayerProperties>  m_layers;
   std::vector<VkPhysicalDevice>   m_physicalDevices;
   std::vector<std::pair<uint32_t, uint32_t>> m_suitableDevices;

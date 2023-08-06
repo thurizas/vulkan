@@ -1,5 +1,6 @@
 #include <iostream>
 #include <algorithm>
+#include <numeric>
 #include <iterator>
 #include <vulkan/vulkan.hpp>
 
@@ -16,7 +17,7 @@
 
 
 
-vkCtx::vkCtx( std::vector<std::string>* pLayers, bool d) : m_debug(d), m_instance(VK_NULL_HANDLE), m_suitableDevice(VK_NULL_HANDLE), m_logicalDevice(VK_NULL_HANDLE)
+vkCtx::vkCtx( std::vector<std::string>* pLayers, bool d) : m_debug(d), m_instance(VK_NULL_HANDLE), m_suitableDevice(VK_NULL_HANDLE), m_logicalDevice(VK_NULL_HANDLE), m_validationLayers(nullptr)
 {
   if (m_debug)
   {
@@ -25,19 +26,23 @@ vkCtx::vkCtx( std::vector<std::string>* pLayers, bool d) : m_debug(d), m_instanc
     // verify layers passed in are actually available, make a list of available layers (m_validationLayers)
     if (pLayers->size() > 0)
     {
+      size_t loc = 0;
+      // figure out the length of names of the requested layers....
+      size_t strLen = std::accumulate(pLayers->begin(), pLayers->end(), (size_t)0, [](size_t sum, const std::string str) { return sum + str.size(); });
+      m_validationLayers = new char[sizeof(char) * (strLen + pLayers->size()+2)];               // leave room for null-terminator
+      memset((void*)m_validationLayers, '\0', strLen + pLayers->size());
+
       for (std::string name : *pLayers)
       {
         bool bFound = false;
 
-        for (VkLayerProperties layer : m_layers)
+        for (const VkLayerProperties& layer : m_layers)
         {
           if (strcmp(name.c_str(), layer.layerName) == 0)
           {
             bFound = true;
-            char* temp = new char[name.size() + 1];
-            memset((void*)temp, '\0', name.size() + 1);
-            memcpy(temp, name.c_str(), name.size() + 17);
-            m_validationLayers.push_back(temp);
+            memcpy(&m_validationLayers[loc], name.c_str(), name.length());
+            loc += name.length()+1;
             break;
           }
         }
@@ -50,15 +55,17 @@ vkCtx::vkCtx( std::vector<std::string>* pLayers, bool d) : m_debug(d), m_instanc
     }
     else
     {
-      std::cout << "[ ] no validation layers provided" << std::endl;
+      std::cout << "[?] no validation layers provided on command line" << std::endl;
     }
   }
 }
 
 vkCtx::~vkCtx()
 {
-  // TODO : delete strings in m_validationLayers
+  vkDestroyDevice(m_logicalDevice, nullptr);
   vkDestroyInstance(m_instance, nullptr);
+
+  if (nullptr != m_validationLayers)  { delete[] m_validationLayers; m_validationLayers = nullptr; }
 }
 
 // This function initialized Vulkan and enumerates the physical devices found
@@ -84,11 +91,11 @@ VkResult vkCtx::init()
   createInfo.pApplicationInfo = &appInfo;
   createInfo.enabledExtensionCount = glfwExtensionCnt;
   createInfo.ppEnabledExtensionNames = glfwExtensionList;
-  if (m_debug && (m_validationLayers.size() >0 ))
+  if(m_debug)
   {
-    std::vector<const char*> layers = { "VK_LAYER_NV_optimus","VK_LAYER_NV_nsight","VK_LAYER_NV_nsight-sys" };
-    createInfo.enabledLayerCount = static_cast<uint32_t>(m_validationLayers.size());
-    createInfo.ppEnabledLayerNames = m_validationLayers.data();
+    std::vector<const char*> layers = { "VK_LAYER_KHRONOS_validation" };
+    createInfo.enabledLayerCount = static_cast<uint32_t>(layers.size());
+    createInfo.ppEnabledLayerNames = const_cast<const char* const*>(&m_validationLayers);
   }
   else
   {
@@ -146,15 +153,6 @@ VkResult vkCtx::createLDevice(uint32_t device)
   createInfo.pEnabledFeatures = &deviceFeatures;
   createInfo.enabledExtensionCount = 0;
 
-  // if(enabledValidationLayers)
-  // {
-  // 	createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-  // 	createInfo.ppEnabledLayerNames = validationLayers.data();
-  // }
-  // else
-  // {
-  // 	createInfo.enabledlayerCount = 0;
-  // }
 
   res = vkCreateDevice(m_physicalDevices[0], &createInfo, nullptr, &m_logicalDevice);
   if (res == VK_SUCCESS)
