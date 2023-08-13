@@ -4,7 +4,9 @@
 #include <iterator>
 #include <vulkan/vulkan.hpp>
 
+#include "vkException.h"
 #include "vkCtx.h"
+#include "vkLogicalDevice.h"
 #include <GLFW/glfw3.h>
 
 
@@ -17,7 +19,7 @@
 
 
 
-vkCtx::vkCtx( std::vector<std::string>* pLayers, bool d) : m_debug(d), m_instance(VK_NULL_HANDLE), m_suitableDevice(VK_NULL_HANDLE), m_logicalDevice(VK_NULL_HANDLE), m_validationLayers(nullptr)
+vkCtx::vkCtx( std::vector<std::string>* pLayers, bool d) : m_debug(d), m_instance(VK_NULL_HANDLE), /*m_suitableDevice(VK_NULL_HANDLE),*/ m_pLogicalDevice(nullptr), m_validationLayers(nullptr)
 {
   if (m_debug)
   {
@@ -30,7 +32,7 @@ vkCtx::vkCtx( std::vector<std::string>* pLayers, bool d) : m_debug(d), m_instanc
       // figure out the length of names of the requested layers....
       size_t strLen = std::accumulate(pLayers->begin(), pLayers->end(), (size_t)0, [](size_t sum, const std::string str) { return sum + str.size(); });
       m_validationLayers = new char[sizeof(char) * (strLen + pLayers->size()+2)];               // leave room for null-terminator
-      memset((void*)m_validationLayers, '\0', strLen + pLayers->size());
+      memset((void*)m_validationLayers, '\0', strLen + pLayers->size()+2);
 
       for (std::string name : *pLayers)
       {
@@ -62,7 +64,6 @@ vkCtx::vkCtx( std::vector<std::string>* pLayers, bool d) : m_debug(d), m_instanc
 
 vkCtx::~vkCtx()
 {
-  vkDestroyDevice(m_logicalDevice, nullptr);
   vkDestroyInstance(m_instance, nullptr);
 
   if (nullptr != m_validationLayers)  { delete[] m_validationLayers; m_validationLayers = nullptr; }
@@ -129,42 +130,66 @@ VkResult vkCtx::init()
   return res;
 }
 
-VkResult vkCtx::createLDevice(uint32_t device)
+/*
+ * finds suitable device(s) base on application specific requirements
+ *       low order three bits - GPU type 000b - other, 001n - integrated GPU, 010b - discrete GPU, 011b - virtual, 100b - CPU
+ *       
+ */
+uint32_t vkCtx::findSuitableDevice(uint64_t properties)
 {
-  float queuePriority = 1.0f;
-  VkResult res = VK_SUCCESS;
-
-
-  // specify queues device must have
-  //QueueFamilyIndices   indices = findQueueFamilies(m_physicalDevice[0]);
-
-  VkDeviceQueueCreateInfo  queueCreateInfo{};
-  queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-  //queueCreateInfo.queueFamilyIndex = indices.graphicsFamily.value();
-  queueCreateInfo.queueCount = 1;
-  queueCreateInfo.pQueuePriorities = &queuePriority;
-
-  // specify features device must have
-  VkPhysicalDeviceFeatures deviceFeatures{};
-
-  VkDeviceCreateInfo   createInfo{};
-  createInfo.pQueueCreateInfos = &queueCreateInfo;
-  createInfo.queueCreateInfoCount = 1;
-  createInfo.pEnabledFeatures = &deviceFeatures;
-  createInfo.enabledExtensionCount = 0;
-
-
-  res = vkCreateDevice(m_physicalDevices[0], &createInfo, nullptr, &m_logicalDevice);
-  if (res == VK_SUCCESS)
+  uint32_t  nRet = -1;                                   // device that matchs requirements
+  uint32_t  devProp = properties & 0x00000007;
+  uint32_t  nProp = 0;                                   // number of properties matched
+  uint32_t  devFeat = (properties & 0xFFFFFFF8) >> 3;
+  uint32_t  nFeat = 0;                                   // number of features matched
+  uint32_t  nDev = 0;
+  
+  for (const auto& device : m_physicalDevices)
   {
-    std::cout << "[+] logical device created successfully" << std::endl;
-  }
-  else
-  {
-    std::cout << "[-] failed to create logical device" << std::endl;
+    // check the physical device properties
+    VkPhysicalDeviceProperties   phyDevProp;
+
+    // check to see if found device satisify's requested properties...
+    // TODO : VK defined options are not exclusive  integrated_gpu | discrete_gpu == virtual_gpu
+    vkGetPhysicalDeviceProperties(device, &phyDevProp);
+    if (devProp == VK_PHYSICAL_DEVICE_TYPE_OTHER) nProp++;
+    if ((devProp & VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) nProp++;
+    if ((devProp & VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) nProp++;
+    if ((devProp & VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU) == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU) nProp++;
+    if ((devProp & VK_PHYSICAL_DEVICE_TYPE_CPU) == VK_PHYSICAL_DEVICE_TYPE_CPU) nProp++;
+
+    // check to see if found device feature's satisify requested features...
+    // TODO : there are 55 features defined in vk SDK, each as a bit-field
+    // TODO : we can map all featrues to a bit-map on a 64-bit integer
+
+    // nProp is greater than zero, consider this device suitable...
+    if (nProp > 0) nRet = nDev;
   }
 
-  return res;
+  return nRet;
+}
+
+
+bool vkCtx::createLogicalDevice(uint32_t device)
+{
+  bool bRet = false;
+
+  try
+  {
+    m_pLogicalDevice = new vkLogicalDevice(m_physicalDevices[device]);
+    bRet = true;
+  }
+  catch (std::bad_alloc)
+  {
+    std::cout << "[-] failed to allocate memory for a new logical device" << std::endl;
+  }
+  catch (vkException& exc)
+  {
+    std::cout << "[-] failed to create logical device, " << exc.what() << std::endl;
+  }
+
+ 
+  return bRet;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -186,52 +211,36 @@ void vkCtx::enumerateLayers()
 }
 
 
-
-/*
- * finds suitable device(s) and populate the m_suitableDevices with pairs of data
- *      first element - device index from m_physicalDevices
- *      second element - device score
- */
-bool vkCtx::findSuitableDevice()
-{
-  bool bRet = false;
-
-  for (const auto& device : m_physicalDevices)
-  {
-
-
-  }
-
-  if (m_suitableDevices.size() == 0)
-  {
-    m_suitableDevice = VK_NULL_HANDLE;
-    std::cout << "[-] Unable to find a suitable device" << std::endl;
-  }
-
-
-
-  return bRet;
-}
-
-
 void vkCtx::printPhyDeviceInfo(uint32_t cntPDevices)
 {
   uint32_t ndx = 0;
-
 
   for (auto device : m_physicalDevices)
   {
     uint32_t cntQueueFamilyProps = 0;
     std::vector<VkQueueFamilyProperties> queueProperties;
     VkPhysicalDeviceMemoryProperties     phyMemProp;
+    VkPhysicalDeviceProperties           phyDevProp;
 
+    vkGetPhysicalDeviceProperties(device, &phyDevProp);
     vkGetPhysicalDeviceMemoryProperties(device, &phyMemProp);
     vkGetPhysicalDeviceQueueFamilyProperties(device, &cntQueueFamilyProps, nullptr);
     queueProperties.resize(cntQueueFamilyProps);
     vkGetPhysicalDeviceQueueFamilyProperties(device, &cntQueueFamilyProps, queueProperties.data());
 
+
     std::cout << "[+] device (" << ndx << ") # of queue: (" << cntQueueFamilyProps << ") memory types: ("
       << phyMemProp.memoryTypeCount << ") heap types: (" << phyMemProp.memoryHeapCount << ")" << std::endl;
+    std::cout << "    device name  : " << phyDevProp.deviceName << std::endl;
+    std::cout << "    apiVersion: " << phyDevProp.apiVersion << std::endl;
+    std::cout << "    driverVersion: " << phyDevProp.driverVersion << std::endl;
+    std::cout << "    device type  : " << phyDevProp.deviceType;
+    std::cout << (phyDevProp.deviceType == VK_PHYSICAL_DEVICE_TYPE_OTHER ? " - other": "");
+    std::cout << (phyDevProp.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? " - integrated GPU" : "");
+    std::cout << (phyDevProp.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? " - discrete GPU" : "");
+    std::cout << (phyDevProp.deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU ? " - virtual GPU" : "");
+    std::cout << (phyDevProp.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU ? " - CPU" : "");
+    std::cout << std::endl;
 
     // print out queues....
     for (uint32_t jdx = 0; jdx < cntQueueFamilyProps; jdx++)
@@ -248,7 +257,6 @@ void vkCtx::printPhyDeviceInfo(uint32_t cntPDevices)
       if ((VK_QUEUE_OPTICAL_FLOW_BIT_NV & flags) == VK_QUEUE_OPTICAL_FLOW_BIT_NV) std::cout << "optical flow, ";
       std::cout << ")" << std::endl;
     }
-
 
     // print out memory types...
     for (uint32_t jdx = 0; jdx < phyMemProp.memoryTypeCount; jdx++)
@@ -267,6 +275,7 @@ void vkCtx::printPhyDeviceInfo(uint32_t cntPDevices)
       if ((VK_MEMORY_PROPERTY_RDMA_CAPABLE_BIT_NV & flags) == VK_MEMORY_PROPERTY_RDMA_CAPABLE_BIT_NV) std::cout << "rdma, ";
       std::cout << ")" << std::endl;
     }
+
     // print out heap types...
     for (uint32_t jdx = 0; jdx < phyMemProp.memoryHeapCount; jdx++)
     {

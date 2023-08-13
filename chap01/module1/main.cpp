@@ -29,17 +29,26 @@ void glfwErrorHndr(int, const char*);                       // error handler for
 int main(int argc, char** argv)
 {
   bool                       debugMode = false;
+  uint32_t                   debugLvl = 3;          // only print out error or fatal notices
   int                        choice = -1;
   std::vector<std::string>   requistedLayers;
-  GLFWwindow*      window = nullptr;
+  GLFWwindow*                window = nullptr;
+  uint32_t                   devProperties = VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU | VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+  uint64_t                   devFeatures = 0;
 
   while (-1 != (choice = getopt(argc, argv, "dl:")))
   {
     switch (choice)
     {
       case 'd':                              // enabling debugging - add validation layer by default.
-        debugMode = !debugMode;
-        requistedLayers.push_back("VK_LAYER_KHRONOS_validation");
+        if (!debugMode)                      // only setup debugging on first '-d' flage
+        {
+          debugMode = !debugMode;
+          requistedLayers.push_back("VK_LAYER_KHRONOS_validation");
+        }
+        debugLvl--;
+        if (debugLvl < 1) debugLvl = 1;      // clamp debugLvl between [1,6]
+        if (debugLvl > 6) debugLvl = 6;
         break;
 
       case 'l':
@@ -84,19 +93,27 @@ int main(int argc, char** argv)
 
     if (VK_SUCCESS == theApp.init())
     {
-      if (VK_SUCCESS == theApp.createLDevice(0))
+       uint32_t device = theApp.findSuitableDevice(devProperties | (devFeatures << 3));
+      if (device >= 0)                                            // found a suitable device
       {
-
-        while (!glfwWindowShouldClose(window))                    // rendering loop
+        if (theApp.createLogicalDevice(device))
         {
-          glfwPollEvents();
+
+          while (!glfwWindowShouldClose(window))                    // rendering loop
+          {
+            glfwPollEvents();
+          }
+
+
         }
-
-
+        else
+        {
+          std::cout << "[-] Failed to create a graphics logical device" << std::endl;
+        }
       }
       else
       {
-        std::cout << "[-] Failed to create a graphics logical device" << std::endl;
+        std::cout << "[-] Failed to find a suitable device" << std::endl;
       }
     }
     else

@@ -17,29 +17,28 @@
 #include <vector>
 #include <map>
 
+//#include "vkLogicalDevice.h"
+class vkLogicalDevice;
+
 struct vkCtx
 {
   vkCtx(std::vector<std::string>* pLayers, bool d = false);
   ~vkCtx();
   VkResult     init();
-  VkResult     createLDevice(uint32_t dev = 0);           // create logical device
-
-
+  bool         createLogicalDevice(uint32_t dev = 0);           // create logical device
+  uint32_t     findSuitableDevice(uint64_t);                            // ranks devices and populates m_suitableDevices
 
 private:
   bool                            m_debug;
   VkInstance                      m_instance;
-  VkDevice                        m_suitableDevice;
-  VkDevice                        m_logicalDevice;
+  vkLogicalDevice*                m_pLogicalDevice;
   char*                           m_validationLayers;
   std::vector<VkLayerProperties>  m_layers;
   std::vector<VkPhysicalDevice>   m_physicalDevices;
-  std::vector<std::pair<uint32_t, uint32_t>> m_suitableDevices;
 
   void         enumerateLayers();
   void         printPhyDeviceInfo(uint32_t);
-  bool         findSuitableDevice();                    // ranks devices and populates m_suitableDevices
-
+ 
 };
 
 
