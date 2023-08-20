@@ -19,7 +19,27 @@
 
 
 
-vkCtx::vkCtx( std::vector<std::string>* pLayers, bool d) : m_debug(d), m_instance(VK_NULL_HANDLE), /*m_suitableDevice(VK_NULL_HANDLE),*/ m_pLogicalDevice(nullptr), m_validationLayers(nullptr)
+/************************************************************************************************************************
+ * function  : ctor  
+ *
+ * abstract  : This constructs an instance of the vulkan context.  This function performs the following operations,
+ *             (1) enumerates the validation layers that are installed
+ *             (2) constructs a validation string (char* m_validationLayers) by confirming that all names passed in from 
+ *                 the command line are actually installed on the system
+ *
+ * parameters: pLayers -- [in] std::vector<std::strings>*  contains a vector of requested strings for the validation layers
+ *             pWindow -- [in] pointer to a GLFWwindow structure representing the GLFW window that rendering will be 
+ *                        done to.
+ *             d -- [in] flag to indicate if this is being run in debug mode or not.  validation layers are only active
+ *                       in a debug build.  
+ *
+ * returns   : throws an exception of type vkException if an error occures.  note, failing to find on of the requested
+ *             validation layers is not an error, however it will generate a warning.
+ *
+ * written   : Aug 2023 (GKHuber)
+************************************************************************************************************************/
+vkCtx::vkCtx( std::vector<std::string>* pLayers, GLFWwindow* pWindow, bool d) : m_debug(d), m_cntLayers(0), m_physDeviceIndex(-1), 
+              m_pWindow(pWindow), m_instance(VK_NULL_HANDLE), m_pLogicalDevice(nullptr), m_validationLayers(nullptr)
 {
   if (m_debug)
   {
@@ -43,6 +63,7 @@ vkCtx::vkCtx( std::vector<std::string>* pLayers, bool d) : m_debug(d), m_instanc
           if (strcmp(name.c_str(), layer.layerName) == 0)
           {
             bFound = true;
+            m_cntLayers++;
             memcpy(&m_validationLayers[loc], name.c_str(), name.length());
             loc += name.length()+1;
             break;
@@ -55,10 +76,6 @@ vkCtx::vkCtx( std::vector<std::string>* pLayers, bool d) : m_debug(d), m_instanc
         }
       }
     }
-    else
-    {
-      std::cout << "[?] no validation layers provided on command line" << std::endl;
-    }
   }
 }
 
@@ -69,9 +86,23 @@ vkCtx::~vkCtx()
   if (nullptr != m_validationLayers)  { delete[] m_validationLayers; m_validationLayers = nullptr; }
 }
 
-// This function initialized Vulkan and enumerates the physical devices found
-// print parameter controls in the device list is printed to consol.
-VkResult vkCtx::init()
+
+
+/************************************************************************************************************************
+ * function  : init
+ *
+ * abstract  : This function initializes the vulkan context, it does the following operations;
+ *             (1) creates the vulkan instance (stored in m_instance).
+ *             (2) enumerates the physical devices. retreiving thier physical properties, 
+ *             (3) compare the physical properties with the requested physical properties and set this as default.
+ *
+ * parameters: properties -- [in] a 64-bit value that determines the requested properites of the physical device.
+ *
+ * returns   : returns a VkResult
+ *
+ * written   : Aug 2023 (GKHuber)
+************************************************************************************************************************/
+VkResult vkCtx::init(vkProperties properties, uint32_t* device)
 {
   VkResult res = VK_SUCCESS;
 
@@ -94,8 +125,7 @@ VkResult vkCtx::init()
   createInfo.ppEnabledExtensionNames = glfwExtensionList;
   if(m_debug)
   {
-    std::vector<const char*> layers = { "VK_LAYER_KHRONOS_validation" };
-    createInfo.enabledLayerCount = static_cast<uint32_t>(layers.size());
+    createInfo.enabledLayerCount = m_cntLayers;
     createInfo.ppEnabledLayerNames = const_cast<const char* const*>(&m_validationLayers);
   }
   else
@@ -103,23 +133,20 @@ VkResult vkCtx::init()
     createInfo.enabledLayerCount = 0;
   }
 
-  res = vkCreateInstance(&createInfo, nullptr, &m_instance);
+  res = vkCreateInstance(&createInfo, nullptr, &m_instance);                            // create the vulkan instance 
 
   if (res == VK_SUCCESS)
   {
     uint32_t cntPDevices = 0;
     res = vkEnumeratePhysicalDevices(m_instance, &cntPDevices, nullptr);
     m_physicalDevices.resize(cntPDevices);
-    vkEnumeratePhysicalDevices(m_instance, &cntPDevices, m_physicalDevices.data());
+    res = vkEnumeratePhysicalDevices(m_instance, &cntPDevices, m_physicalDevices.data());
 
-    if (res == VK_SUCCESS)
+    *device = findSuitableDevice(properties);
+    if (-1 == *device)
     {
-      std::cout << "[+] found " << cntPDevices << " physical devices" << std::endl;
-      if (m_debug) printPhyDeviceInfo(cntPDevices);
-    }
-    else
-    {
-      std::cout << "[-] failed to enumerate devices, error code is: " << res << std::endl;
+      std::cout << "[-] failed to find a suitable device" << std::endl;
+      res = VK_ERROR_INITIALIZATION_FAILED;
     }
   }
   else
@@ -135,48 +162,98 @@ VkResult vkCtx::init()
  *       low order three bits - GPU type 000b - other, 001n - integrated GPU, 010b - discrete GPU, 011b - virtual, 100b - CPU
  *       
  */
-uint32_t vkCtx::findSuitableDevice(uint64_t properties)
+/************************************************************************************************************************
+ * function  : findSuitableDevice
+ *
+ * abstract  : This function attempts to determine is one of the detected physical devices is usable, and returns it index 
+ *             in the vector of physical devices (m_physicalDevices).  vkGetPhysicalDeviceProperties will fill in a 
+ *             VkPhysicalDeviceProperties structure;
+ *               typedef struct VkPhysicalDeviceProperties {
+ *                     uint32_t                            apiVersion;
+ *                     uint32_t                            driverVersion;
+ *                     uint32_t                            vendorID;
+ *                     uint32_t                            deviceID;
+ *                     VkPhysicalDeviceType                deviceType;
+ *                     char                                deviceName[VK_MAX_PHYSICAL_DEVICE_NAME_SIZE];
+ *                     uint8_t                             pipelineCacheUUID[VK_UUID_SIZE];
+ *                     VkPhysicalDeviceLimits              limits;
+ *                     VkPhysicalDeviceSparseProperties    sparseProperties;
+ *               } VkPhysicalDeviceProperties;
+ * 
+ *             The field, deviceType is an enumeration for the type of the device,
+ *                enum {VK_PHYSICAL_DEVICE_OTHER = 0, VK_PHYSICAL_DEVICE_INTEGRATED_GPU=1, VK_PHYSICAL_DEVICE_DESCRETE_GPU=2,
+ *                      VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU=3,VK_PHYSICAL_DEVICE_TYPE_CPu=4}
+ * 
+ *             For now we take the first physical device that satisfies the requirements.
+ * 
+ *     // check to see if found device feature's satisify requested features...
+       // TODO : VK defined options are not exclusive  integrated_gpu | discrete_gpu == virtual_gpu
+       // TODO : there are 55 features defined in vk SDK, each as a bit-field
+       // TODO : we can map all featrues to a bit-map on a 64-bit integer
+ *
+ * parameters: properties -- [in] 64-bit value representing the requested properties of the physical device.
+ *
+ * returns   : If no suitable device is found a -1 is returned.  
+ *
+ * written   : Aug 2023 (GKHuber)
+************************************************************************************************************************/
+uint32_t vkCtx::findSuitableDevice(vkProperties properties)
 {
-  uint32_t  nRet = -1;                                   // device that matchs requirements
-  uint32_t  devProp = properties & 0x00000007;
-  uint32_t  nProp = 0;                                   // number of properties matched
-  uint32_t  devFeat = (properties & 0xFFFFFFF8) >> 3;
-  uint32_t  nFeat = 0;                                   // number of features matched
-  uint32_t  nDev = 0;
+  uint32_t  nRet = -1;                                     // device that matchs requirements
+  uint32_t devProp = properties.type;
+  uint32_t devOps = properties.ops;
+  std::vector<uint32_t> canidateDevs;                      // vector of canidate devices
+  uint32_t  nDev = 0;                                      // index of device in phy device buffer
   
-  for (const auto& device : m_physicalDevices)
+  //for (const auto& device : m_physicalDevices)           
+  for(nDev = 0; nDev < m_physicalDevices.size(); nDev++)   // iterate over the physical devices
   {
-    // check the physical device properties
-    VkPhysicalDeviceProperties   phyDevProp;
+    VkPhysicalDeviceProperties   phyDevProp;               // check the physical device properties
 
     // check to see if found device satisify's requested properties...
-    // TODO : VK defined options are not exclusive  integrated_gpu | discrete_gpu == virtual_gpu
-    vkGetPhysicalDeviceProperties(device, &phyDevProp);
-    if (devProp == VK_PHYSICAL_DEVICE_TYPE_OTHER) nProp++;
-    if ((devProp & VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) nProp++;
-    if ((devProp & VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) nProp++;
-    if ((devProp & VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU) == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU) nProp++;
-    if ((devProp & VK_PHYSICAL_DEVICE_TYPE_CPU) == VK_PHYSICAL_DEVICE_TYPE_CPU) nProp++;
+    vkGetPhysicalDeviceProperties(m_physicalDevices.at(nDev), &phyDevProp);
 
-    // check to see if found device feature's satisify requested features...
-    // TODO : there are 55 features defined in vk SDK, each as a bit-field
-    // TODO : we can map all featrues to a bit-map on a 64-bit integer
+    // we ask is physical device of type 'T' _and_ is type 'T' requested 
+    if (phyDevProp.deviceType == VK_PHYSICAL_DEVICE_TYPE_OTHER) continue;
+    if((phyDevProp.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) && (devProp & VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU)) canidateDevs.push_back(nDev);
+    if ((phyDevProp.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU) && (devProp & VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)) canidateDevs.push_back(nDev);
+    if ((phyDevProp.deviceType == VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU) && (devProp & VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU)) canidateDevs.push_back(nDev);
+    if ((phyDevProp.deviceType == VK_PHYSICAL_DEVICE_TYPE_CPU) && (devProp & VK_PHYSICAL_DEVICE_TYPE_CPU)) canidateDevs.push_back(nDev);
+  }
 
-    // nProp is greater than zero, consider this device suitable...
-    if (nProp > 0) nRet = nDev;
+  for(uint32_t dev : canidateDevs)                                       // found a canidate device, look at queues
+  {
+    uint32_t                              cntQueueFamilyProps = 0;
+    std::vector<VkQueueFamilyProperties>  queueProperties;
+    vkGetPhysicalDeviceQueueFamilyProperties(m_physicalDevices.at(dev), &cntQueueFamilyProps, nullptr);
+    queueProperties.resize(cntQueueFamilyProps);
+    vkGetPhysicalDeviceQueueFamilyProperties(m_physicalDevices.at(dev), &cntQueueFamilyProps, queueProperties.data());
+
+    int cnt = 0;
+    
+    // we ask for each queue, the the queue bit set _and_ is that bit requested.
+    for(VkQueueFamilyProperties queue : queueProperties)
+    {
+      if ((queue.queueFlags & devOps) == devOps)
+      {
+        nRet = dev;               // canidate device meets out expectations
+        std::cout << "[+] found a suitable device: " << dev << " with a suitable queue" << std::endl;
+        break;
+      }
+    }
   }
 
   return nRet;
 }
 
-
+// device is index into physical device vector
 bool vkCtx::createLogicalDevice(uint32_t device)
 {
   bool bRet = false;
 
   try
   {
-    m_pLogicalDevice = new vkLogicalDevice(m_physicalDevices[device]);
+    m_pLogicalDevice = new vkLogicalDevice(this, m_physicalDevices[device], m_debug);
     bRet = true;
   }
   catch (std::bad_alloc)

@@ -1,6 +1,10 @@
+
+
+#define VK_USE_PLATFORM_WIN32_KHR
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
-
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
 #define GLM_FORCE_RADIANS
 #define GLMFORCE_DEPTH_ZERO_TO_ONE
 #include <glm/vec4.hpp>
@@ -29,12 +33,12 @@ void glfwErrorHndr(int, const char*);                       // error handler for
 int main(int argc, char** argv)
 {
   bool                       debugMode = false;
-  uint32_t                   debugLvl = 3;          // only print out error or fatal notices
+  uint32_t                   debugLvl = 3;                  // only print out error or fatal notices
   int                        choice = -1;
   std::vector<std::string>   requistedLayers;
   GLFWwindow*                window = nullptr;
-  uint32_t                   devProperties = VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU | VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
-  uint64_t                   devFeatures = 0;
+  vkProperties               properties{ VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU | VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU,VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT,0 };
+
 
   while (-1 != (choice = getopt(argc, argv, "dl:")))
   {
@@ -86,34 +90,25 @@ int main(int argc, char** argv)
 
 
 
-  GLFWerrorfun oldHandler = glfwSetErrorCallback(glfwErrorHndr);  // register our custrom error handler
-  if (initWindow(&window))                                        // create and instantiate the GLFW window
+  GLFWerrorfun oldHandler = glfwSetErrorCallback(glfwErrorHndr);     // register our custrom error handler
+  if (initWindow(&window))                                           // create and instantiate the GLFW window
   {
-    vkCtx theApp(&requistedLayers, debugMode);
+    uint32_t device = 0;
+    vkCtx theApp(&requistedLayers, window, debugMode);
 
-    if (VK_SUCCESS == theApp.init())
+    if (VK_SUCCESS == theApp.init(properties,&device))
     {
-       uint32_t device = theApp.findSuitableDevice(devProperties | (devFeatures << 3));
-      if (device >= 0)                                            // found a suitable device
+      if (theApp.createLogicalDevice(device))
       {
-        if (theApp.createLogicalDevice(device))
+
+        while (!glfwWindowShouldClose(window))                    // rendering loop
         {
-
-          while (!glfwWindowShouldClose(window))                    // rendering loop
-          {
-            glfwPollEvents();
-          }
-
-
-        }
-        else
-        {
-          std::cout << "[-] Failed to create a graphics logical device" << std::endl;
+          glfwPollEvents();
         }
       }
       else
       {
-        std::cout << "[-] Failed to find a suitable device" << std::endl;
+        std::cout << "[-] Failed to create a graphics logical device" << std::endl;
       }
     }
     else
@@ -124,7 +119,6 @@ int main(int argc, char** argv)
         
   glfwSetErrorCallback(oldHandler);                         // restore the original error handler
   if(nullptr != window)  delWindow(window);                 // GLFW window has to be destroyed after Vulkan instance is destroyed
-
 
   return 0;
 }

@@ -4,6 +4,7 @@
 #include <vulkan/vulkan.hpp>
 #include <optional>
 
+struct vkCtx;
 
 struct QueueFamilyIndices
 {
@@ -15,13 +16,16 @@ struct QueueFamilyIndices
 class vkLogicalDevice
 {
 public:
-  vkLogicalDevice(VkPhysicalDevice);
+  vkLogicalDevice(vkCtx*, VkPhysicalDevice, bool debug = false);
   ~vkLogicalDevice();
   vkLogicalDevice() = delete;
 
 private:
+  vkCtx*             m_pCtx;
+  bool               m_debug;
   VkPhysicalDevice   m_physDevice;
   VkDevice           m_logicalDevice;
+  VkQueue            m_graphicsQueue;
 
   QueueFamilyIndices findQueueFamilies();
 };
