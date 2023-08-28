@@ -158,11 +158,14 @@
     <ClCompile Include="logger.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="vkCtx.cpp" />
+    <ClCompile Include="vkLogicalDevice.cpp" />
     <ClCompile Include="XGetopt.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="logger.h" />
     <ClInclude Include="vkCtx.h" />
+    <ClInclude Include="vkException.h" />
+    <ClInclude Include="vkLogicalDevice.h" />
     <ClInclude Include="XGetopt.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -31,28 +31,37 @@ typedef struct _vkProperties
 
 struct vkCtx
 {
-  vkCtx(std::vector<std::string>* pLayers, GLFWwindow* pWindow, bool d = false);
+  vkCtx(std::vector<std::string>* pLayers, std::vector<const char*>*, GLFWwindow* pWindow, bool d = false);
   ~vkCtx();
   VkResult     init(vkProperties, uint32_t* device);
+  VkInstance   instance() { return m_instance; }
   
   bool         createLogicalDevice(uint32_t dev = 0);           // create logical device
+
+  VkResult     createDebugMessenger(PFN_vkDebugUtilsMessengerCallbackEXT);
+  void         destroyDebugMessenger();
 
   char*        getValidationLayers() { return m_validationLayers; }
   uint32_t     getLayerCnt() { return m_cntLayers; }
 
 private:
-  bool                            m_debug;
-  uint32_t                        m_cntLayers;
-  uint32_t                        m_physDeviceIndex;
-  GLFWwindow*                     m_pWindow;
-  VkInstance                      m_instance;
-  VkSurfaceKHR                    m_surface;
-  vkLogicalDevice*                m_pLogicalDevice;
-  char*                           m_validationLayers;
-  std::vector<VkLayerProperties>  m_layers;
-  std::vector<VkPhysicalDevice>   m_physicalDevices;
+  bool                               m_debug;
+  uint32_t                           m_cntLayers = 0;
+  uint32_t                           m_cntExts = 0;
+  uint32_t                           m_physDeviceIndex;
+  GLFWwindow*                        m_pWindow;
+  VkInstance                         m_instance;
+  VkSurfaceKHR                       m_surface;
+  vkLogicalDevice*                   m_pLogicalDevice;
+  VkDebugUtilsMessengerEXT           m_debugMessenger = nullptr;
+  char*                              m_validationLayers;
+  std::vector<const char*>           m_extensions;
+  std::vector<VkLayerProperties>     m_layerList;
+  std::vector<VkExtensionProperties> m_extensionList;
+  std::vector<VkPhysicalDevice>      m_physicalDevices;
 
   void         enumerateLayers();
+  void         enumerateExtensions();
   uint32_t     findSuitableDevice(vkProperties);                    // find a suitable device
   void         printPhyDeviceInfo(uint32_t);
  

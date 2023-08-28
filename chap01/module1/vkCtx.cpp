@@ -26,8 +26,11 @@
  *             (1) enumerates the validation layers that are installed
  *             (2) constructs a validation string (char* m_validationLayers) by confirming that all names passed in from 
  *                 the command line are actually installed on the system
+ *             (3) constructs an extension string (char* m_extentions) by confirming that all names passed in from the 
+ *                 the command line are actually installed on the system.
  *
- * parameters: pLayers -- [in] std::vector<std::strings>*  contains a vector of requested strings for the validation layers
+ * parameters: pLayers -- [in] std::vector<std::string>*  contains a vector of requested name of the validation layers
+ *             pExt    -- [in] std::vector<std::string>* contains a vector of requested names of extentions
  *             pWindow -- [in] pointer to a GLFWwindow structure representing the GLFW window that rendering will be 
  *                        done to.
  *             d -- [in] flag to indicate if this is being run in debug mode or not.  validation layers are only active
@@ -38,12 +41,13 @@
  *
  * written   : Aug 2023 (GKHuber)
 ************************************************************************************************************************/
-vkCtx::vkCtx( std::vector<std::string>* pLayers, GLFWwindow* pWindow, bool d) : m_debug(d), m_cntLayers(0), m_physDeviceIndex(-1), 
+vkCtx::vkCtx( std::vector<std::string>* pLayers, std::vector<const char*>* pExt, GLFWwindow* pWindow, bool d) : m_debug(d), m_physDeviceIndex(-1), 
               m_pWindow(pWindow), m_instance(VK_NULL_HANDLE), m_pLogicalDevice(nullptr), m_validationLayers(nullptr)
 {
   if (m_debug)
   {
     enumerateLayers();
+    enumerateExtensions();
 
     // verify layers passed in are actually available, make a list of available layers (m_validationLayers)
     if (pLayers->size() > 0)
@@ -58,7 +62,7 @@ vkCtx::vkCtx( std::vector<std::string>* pLayers, GLFWwindow* pWindow, bool d) : 
       {
         bool bFound = false;
 
-        for (const VkLayerProperties& layer : m_layers)
+        for (const VkLayerProperties& layer : m_layerList)
         {
           if (strcmp(name.c_str(), layer.layerName) == 0)
           {
@@ -75,12 +79,31 @@ vkCtx::vkCtx( std::vector<std::string>* pLayers, GLFWwindow* pWindow, bool d) : 
           std::cout << "[-] requested validation layer " << name.c_str() << " is not available" << std::endl;
         }
       }
+
+      for (std::string name : *pExt)
+      {
+        bool bFound = false;
+
+        for (const VkExtensionProperties& ext : m_extensionList)
+        {
+          if (strcmp(name.c_str(), ext.extensionName) == 0)
+          {
+            bFound = true;
+            m_cntExts++;
+            m_extensions.push_back(ext.extensionName);
+            break;
+          }
+        }
+      }
     }
   }
 }
 
+
 vkCtx::~vkCtx()
 {
+  if (nullptr != m_pLogicalDevice) { delete m_pLogicalDevice; m_pLogicalDevice = nullptr; }
+
   vkDestroyInstance(m_instance, nullptr);
 
   if (nullptr != m_validationLayers)  { delete[] m_validationLayers; m_validationLayers = nullptr; }
@@ -115,14 +138,14 @@ VkResult vkCtx::init(vkProperties properties, uint32_t* device)
   appInfo.apiVersion = VK_MAKE_VERSION(1, 0, 0);
 
   // we are using GLFW so if it needs any extensions, get them and add to Vulkan's extension list...
-  uint32_t glfwExtensionCnt = 0;
-  const char** glfwExtensionList;
-  glfwExtensionList = glfwGetRequiredInstanceExtensions(&glfwExtensionCnt);
+  //uint32_t glfwExtensionCnt = 0;
+  //const char** glfwExtensionList;
+  //glfwExtensionList = glfwGetRequiredInstanceExtensions(&glfwExtensionCnt);
 
   createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
   createInfo.pApplicationInfo = &appInfo;
-  createInfo.enabledExtensionCount = glfwExtensionCnt;
-  createInfo.ppEnabledExtensionNames = glfwExtensionList;
+  createInfo.enabledExtensionCount = static_cast<uint32_t>(m_extensions.size());
+  createInfo.ppEnabledExtensionNames = m_extensions.data();
   if(m_debug)
   {
     createInfo.enabledLayerCount = m_cntLayers;
@@ -270,20 +293,88 @@ bool vkCtx::createLogicalDevice(uint32_t device)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// debugging support
+VkResult vkCtx::createDebugMessenger(PFN_vkDebugUtilsMessengerCallbackEXT debugCallback)
+{
+  VkDebugUtilsMessengerCreateInfoEXT   createInfo = {};
+  createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+  createInfo.messageSeverity = createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+  createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+  createInfo.pfnUserCallback = debugCallback;
+
+  // need to load this dynamically as it comes from an extention.
+  auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(m_instance, "vkCreateDebugUtilsMessengerEXT");
+  if (func != nullptr)
+    return func(m_instance, &createInfo, nullptr, &m_debugMessenger);
+  else
+    return VK_ERROR_EXTENSION_NOT_PRESENT;
+}
+
+void vkCtx::destroyDebugMessenger()
+{
+//  vkDestroyDebugUtilsMessengerEXT(m_instance, m_debugMessenger, nullptr);
+
+  auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(m_instance, "vkDestroyDebugUtilsMessengerEXT");
+  if (func != nullptr) 
+  {
+    func(m_instance, m_debugMessenger, nullptr);
+  }
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // private functions
+/************************************************************************************************************************
+ * function : 
+ *
+ * abstract  :
+ *
+ * parameters:
+ *
+ * returns   :
+ *
+ * written   : Aug 2023 (GKHuber)
+************************************************************************************************************************/
 void vkCtx::enumerateLayers()
 {
   uint32_t  layerCnt = 0;
   vkEnumerateInstanceLayerProperties(&layerCnt, nullptr);
 
-  m_layers.resize(layerCnt);
-  vkEnumerateInstanceLayerProperties(&layerCnt, m_layers.data());
+  m_layerList.resize(layerCnt);
+  vkEnumerateInstanceLayerProperties(&layerCnt, m_layerList.data());
 
   uint32_t ndx = 0;
   std::cout << "[+] found " << layerCnt << " validation layers" << std::endl;
-  for (VkLayerProperties layer : m_layers)
+  for (VkLayerProperties layer : m_layerList)
   {
     std::cout << "        layer (" << ndx++ << ") " << layer.layerName << " (" << layer.description << ")" << std::endl;
+  }
+}
+
+
+/************************************************************************************************************************
+ * function : 
+ *
+ * abstract  :
+ *
+ * parameters:
+ *
+ * returns   :
+ *
+ * written   : Aug 2023 (GKHuber)
+************************************************************************************************************************/
+void vkCtx::enumerateExtensions()
+{
+  uint32_t extCnt = 0;
+  vkEnumerateInstanceExtensionProperties(nullptr, &extCnt, nullptr);
+  m_extensions.resize(extCnt);
+
+  vkEnumerateInstanceExtensionProperties(nullptr, &extCnt, m_extensionList.data());
+
+  uint32_t ndx = 0;
+  std::cout << "[+] found " << extCnt << " extensions " << std::endl;
+  for (VkExtensionProperties ext : m_extensionList)
+  {
+    std::cout << "        extension (" << ndx++ << ") " << ext.extensionName << " ,version: " << ext.specVersion << std::endl;
   }
 }
 

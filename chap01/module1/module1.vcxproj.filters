@@ -27,6 +27,9 @@
     <ClCompile Include="XGetopt.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="vkLogicalDevice.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="vkCtx.h">
@@ -36,6 +39,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="XGetopt.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vkLogicalDevice.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="vkException.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

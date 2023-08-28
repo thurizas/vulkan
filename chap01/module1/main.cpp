@@ -30,17 +30,25 @@ void delWindow(GLFWwindow*);
 
 void glfwErrorHndr(int, const char*);                       // error handler for GLFW errors
 
+static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(     VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageType, const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData) 
+{
+  std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
+
+  return VK_FALSE;
+}
+
 int main(int argc, char** argv)
 {
   bool                       debugMode = false;
   uint32_t                   debugLvl = 3;                  // only print out error or fatal notices
   int                        choice = -1;
-  std::vector<std::string>   requistedLayers;
+  std::vector<std::string>   requestedLayers;
   GLFWwindow*                window = nullptr;
   vkProperties               properties{ VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU | VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU,VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT,0 };
+ 
 
 
-  while (-1 != (choice = getopt(argc, argv, "dl:")))
+  while (-1 != (choice = getopt(argc, argv, "dl:e:")))
   {
     switch (choice)
     {
@@ -48,7 +56,7 @@ int main(int argc, char** argv)
         if (!debugMode)                      // only setup debugging on first '-d' flage
         {
           debugMode = !debugMode;
-          requistedLayers.push_back("VK_LAYER_KHRONOS_validation");
+          requestedLayers.push_back("VK_LAYER_KHRONOS_validation");
         }
         debugLvl--;
         if (debugLvl < 1) debugLvl = 1;      // clamp debugLvl between [1,6]
@@ -64,15 +72,21 @@ int main(int argc, char** argv)
           std::string layer = argList.substr(0, nLoc);
           argList.erase(0, nLoc+1);
           // TODO : make sure layer being added is unique in list
-          requistedLayers.push_back(layer);
+          requestedLayers.push_back(layer);
         }
         
         if (argList.size() > 0)      // no comma found & still have a string -- push entire string
         {
-          requistedLayers.push_back(argList);
+          requestedLayers.push_back(argList);
         }
-        break;
       }
+      break;
+      
+      case 'e':                              // handling extensions from command line.
+      {
+        std::string argList = std::string(optarg);
+      }
+      break;
 
       case '?':
         std::cout << "unrecognized command line option " << argv[optind] << std::endl;
@@ -92,12 +106,32 @@ int main(int argc, char** argv)
 
   GLFWerrorfun oldHandler = glfwSetErrorCallback(glfwErrorHndr);     // register our custrom error handler
   if (initWindow(&window))                                           // create and instantiate the GLFW window
-  {
+  {  
+    // we are using GLFW, which has a list of required extension...this needs to be called after the GLFW window is created
+    uint32_t glfwExtensionCnt = 0;
+    const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCnt);
+    std::vector<const char*> requestedExts(glfwExtensions, glfwExtensions + glfwExtensionCnt);
+
+
     uint32_t device = 0;
-    vkCtx theApp(&requistedLayers, window, debugMode);
+    vkCtx theApp(&requestedLayers, &requestedExts, window, debugMode);
 
     if (VK_SUCCESS == theApp.init(properties,&device))
     {
+      if (debugMode)                                                  // enable custom logging of layer outpue
+      {
+        VkResult res = theApp.createDebugMessenger(debugCallback);
+        
+        if (res == VK_SUCCESS)
+        {
+          std::cout << "[+] installed custom layer messenger handler" << std::endl;
+        }
+        else
+        {
+          std::cout << "[-] failed to install custom layer messenger handler, error is :" << res << " did you add extension VK_EXT_DEBUG_REPORT_EXTENSION_NAME?" << std::endl;
+        }
+      }
+
       if (theApp.createLogicalDevice(device))
       {
 
@@ -109,6 +143,11 @@ int main(int argc, char** argv)
       else
       {
         std::cout << "[-] Failed to create a graphics logical device" << std::endl;
+      }
+
+      if (debugMode)
+      {
+        theApp.destroyDebugMessenger();
       }
     }
     else
@@ -160,3 +199,5 @@ void glfwErrorHndr(int code, const char* desc)
 {
   std::cout << "[-] Error in GLFW, code: " << code << " description: " << desc << std::endl;
 }
+
+

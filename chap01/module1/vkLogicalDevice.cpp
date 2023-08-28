@@ -59,7 +59,7 @@ vkLogicalDevice::vkLogicalDevice(vkCtx* pCtx, VkPhysicalDevice d, bool dbg) : m_
 
 vkLogicalDevice::~vkLogicalDevice()
 {
-  //vkDestroyDevice(m_logicalDevice, nullptr);  
+  vkDestroyDevice(m_logicalDevice, nullptr);  
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
