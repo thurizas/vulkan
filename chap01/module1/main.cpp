@@ -42,7 +42,8 @@ int main(int argc, char** argv)
   bool                       debugMode = false;
   uint32_t                   debugLvl = 3;                  // only print out error or fatal notices
   int                        choice = -1;
-  std::vector<std::string>   requestedLayers;
+  std::vector<std::string>   vecLayers;                     // requested layers - from command line 
+  std::vector<std::string>   vecExts;                       // requested extension - from command line
   GLFWwindow*                window = nullptr;
   vkProperties               properties{ VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU | VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU,VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_TRANSFER_BIT,0 };
  
@@ -56,7 +57,7 @@ int main(int argc, char** argv)
         if (!debugMode)                      // only setup debugging on first '-d' flage
         {
           debugMode = !debugMode;
-          requestedLayers.push_back("VK_LAYER_KHRONOS_validation");
+          vecLayers.push_back("VK_LAYER_KHRONOS_validation");
         }
         debugLvl--;
         if (debugLvl < 1) debugLvl = 1;      // clamp debugLvl between [1,6]
@@ -72,12 +73,12 @@ int main(int argc, char** argv)
           std::string layer = argList.substr(0, nLoc);
           argList.erase(0, nLoc+1);
           // TODO : make sure layer being added is unique in list
-          requestedLayers.push_back(layer);
+          vecLayers.push_back(layer);
         }
         
         if (argList.size() > 0)      // no comma found & still have a string -- push entire string
         {
-          requestedLayers.push_back(argList);
+          vecLayers.push_back(argList);
         }
       }
       break;
@@ -85,6 +86,19 @@ int main(int argc, char** argv)
       case 'e':                              // handling extensions from command line.
       {
         std::string argList = std::string(optarg);
+        std::string::size_type nLoc = -1;
+        while (-1 != (nLoc = argList.find(",")))
+        {
+          std::string ext = argList.substr(0, nLoc);
+          argList.erase(0, nLoc + 1);
+          // TODO : make sure extension being added is unique in list
+          vecExts.push_back(ext);
+        }
+
+        if (argList.size() > 0)    // no comma found & still have a string -- push entire string
+        {
+          vecExts.push_back(argList);
+        }
       }
       break;
 
@@ -110,13 +124,27 @@ int main(int argc, char** argv)
     // we are using GLFW, which has a list of required extension...this needs to be called after the GLFW window is created
     uint32_t glfwExtensionCnt = 0;
     const char** glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCnt);
+    // convert requested and required extension into an array of c-style strings.
     std::vector<const char*> requestedExts(glfwExtensions, glfwExtensions + glfwExtensionCnt);
+    for (std::string n : vecExts) 
+    { 
+      char* name = new char[n.size() + 1]; memset((void*)name, '\0', n.size() + 1); strcpy(name, n.c_str());
+      requestedExts.push_back(name); 
+    }
+
+    // convert requested layers into an array of c-style strings.
+    std::vector<const char*> requestedLayers;
+    for (std::string n : vecLayers) 
+    { 
+      char* name = new char[n.size() + 1]; memset((void*)name, '\0', n.size() + 1); strcpy(name, n.c_str());
+      requestedLayers.push_back(name); 
+    }
 
 
     uint32_t device = 0;
     vkCtx theApp(&requestedLayers, &requestedExts, window, debugMode);
 
-    if (VK_SUCCESS == theApp.init(properties,&device))
+    if (VK_SUCCESS == theApp.init(properties,&device,debugCallback))
     {
       if (debugMode)                                                  // enable custom logging of layer outpue
       {

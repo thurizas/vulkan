@@ -5,17 +5,30 @@
 #include "vkException.h"
 #include <vulkan/vulkan.hpp>
 
+/************************************************************************************************************************
+ * function :
+ *
+ * abstract  :
+ *
+ * parameters:
+ *
+ * returns   :
+ *
+ * written   : Aug 2023 (GKHuber)
+************************************************************************************************************************/
 vkLogicalDevice::vkLogicalDevice(vkCtx* pCtx, VkPhysicalDevice d, bool dbg) : m_pCtx(pCtx), m_debug(dbg), m_physDevice(d), m_logicalDevice(VK_NULL_HANDLE)
 {
   VkResult res = VK_SUCCESS;
   float queuePriority = 1.0f;
   
+  std::vector<const char*> layers = m_pCtx->getValidationLayers();
 
   // specify queues device must have
-  //QueueFamilyIndices   indices = findQueueFamilies();
+  // QueueFamilyIndices   indices = findQueueFamilies();
   // TODO : findQueueFamilies fails to populate vector....thus we fail....
 
   VkDeviceQueueCreateInfo  queueCreateInfo{};
+  memset((void*)&queueCreateInfo, 0, sizeof(queueCreateInfo));
   queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
   queueCreateInfo.queueFamilyIndex = 0; // TODO : need to determine this programmatically. indices.graphicsFamily.value();
   queueCreateInfo.queueCount = 1;
@@ -25,6 +38,7 @@ vkLogicalDevice::vkLogicalDevice(vkCtx* pCtx, VkPhysicalDevice d, bool dbg) : m_
   VkPhysicalDeviceFeatures deviceFeatures{};
 
   VkDeviceCreateInfo   createInfo{};
+  memset((void*)&createInfo, 0, sizeof(createInfo));
   createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
   createInfo.pQueueCreateInfos = &queueCreateInfo;
   createInfo.queueCreateInfoCount = 1;
@@ -33,10 +47,8 @@ vkLogicalDevice::vkLogicalDevice(vkCtx* pCtx, VkPhysicalDevice d, bool dbg) : m_
 
   if (m_debug)
   {
-    //std::vector<const char*> layers = { "VK_LAYER_KHRONOS_validation" };
     createInfo.enabledLayerCount = m_pCtx->getLayerCnt();
-    char* validationLayers = m_pCtx->getValidationLayers();
-    createInfo.ppEnabledLayerNames = const_cast<const char* const*>(&(validationLayers));
+    createInfo.ppEnabledLayerNames = layers.data();
   }
   else
   {
@@ -57,13 +69,39 @@ vkLogicalDevice::vkLogicalDevice(vkCtx* pCtx, VkPhysicalDevice d, bool dbg) : m_
 
 }
 
+
+
+/************************************************************************************************************************
+ * function :
+ *
+ * abstract  :
+ *
+ * parameters:
+ *
+ * returns   :
+ *
+ * written   : Aug 2023 (GKHuber)
+************************************************************************************************************************/
 vkLogicalDevice::~vkLogicalDevice()
 {
   vkDestroyDevice(m_logicalDevice, nullptr);  
 }
 
+
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // private functions....
+/************************************************************************************************************************
+ * function :
+ *
+ * abstract  :
+ *
+ * parameters:
+ *
+ * returns   :
+ *
+ * written   : Aug 2023 (GKHuber)
+************************************************************************************************************************/
 QueueFamilyIndices vkLogicalDevice::findQueueFamilies()
 {
   VkResult              res = VK_SUCCESS;

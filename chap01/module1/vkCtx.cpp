@@ -41,22 +41,18 @@
  *
  * written   : Aug 2023 (GKHuber)
 ************************************************************************************************************************/
-vkCtx::vkCtx( std::vector<std::string>* pLayers, std::vector<const char*>* pExt, GLFWwindow* pWindow, bool d) : m_debug(d), m_physDeviceIndex(-1), 
-              m_pWindow(pWindow), m_instance(VK_NULL_HANDLE), m_pLogicalDevice(nullptr), m_validationLayers(nullptr)
+vkCtx::vkCtx( std::vector<const char*>* pLayers, std::vector<const char*>* pExt, GLFWwindow* pWindow, bool d) : m_debug(d), m_physDeviceIndex(-1), 
+              m_pWindow(pWindow), m_instance(VK_NULL_HANDLE), m_pLogicalDevice(nullptr)//, m_validationLayers(nullptr)
 {
   if (m_debug)
   {
     enumerateLayers();
     enumerateExtensions();
 
-    // verify layers passed in are actually available, make a list of available layers (m_validationLayers)
+    // verify layers passed in are actually available. If found push onto layer list (m_layers)
     if (pLayers->size() > 0)
     {
       size_t loc = 0;
-      // figure out the length of names of the requested layers....
-      size_t strLen = std::accumulate(pLayers->begin(), pLayers->end(), (size_t)0, [](size_t sum, const std::string str) { return sum + str.size(); });
-      m_validationLayers = new char[sizeof(char) * (strLen + pLayers->size()+2)];               // leave room for null-terminator
-      memset((void*)m_validationLayers, '\0', strLen + pLayers->size()+2);
 
       for (std::string name : *pLayers)
       {
@@ -68,8 +64,7 @@ vkCtx::vkCtx( std::vector<std::string>* pLayers, std::vector<const char*>* pExt,
           {
             bFound = true;
             m_cntLayers++;
-            memcpy(&m_validationLayers[loc], name.c_str(), name.length());
-            loc += name.length()+1;
+            m_layers.push_back(layer.layerName);
             break;
           }
         }
@@ -79,7 +74,11 @@ vkCtx::vkCtx( std::vector<std::string>* pLayers, std::vector<const char*>* pExt,
           std::cout << "[-] requested validation layer " << name.c_str() << " is not available" << std::endl;
         }
       }
+    }
 
+    // verify that requested extensions are supported.  If found push onto extension list (m_extensions).
+    if(pExt->size() > 0)
+    {
       for (std::string name : *pExt)
       {
         bool bFound = false;
@@ -94,19 +93,35 @@ vkCtx::vkCtx( std::vector<std::string>* pLayers, std::vector<const char*>* pExt,
             break;
           }
         }
+
+        if (!bFound)
+        {
+          std::wcout << "[-] requested extension " << name.c_str() << " is not available" << std::endl;
+        }
       }
     }
   }
 }
 
 
-vkCtx::~vkCtx()
+
+/************************************************************************************************************************
+ * function : 
+ *
+ * abstract  :
+ *
+ * parameters:
+ *
+ * returns   :
+ *
+ * written   : Aug 2023 (GKHuber)
+************************************************************************************************************************/vkCtx::~vkCtx()
 {
   if (nullptr != m_pLogicalDevice) { delete m_pLogicalDevice; m_pLogicalDevice = nullptr; }
 
-  vkDestroyInstance(m_instance, nullptr);
+  if (nullptr != m_debugMessenger) { destroyDebugMessenger(); }
 
-  if (nullptr != m_validationLayers)  { delete[] m_validationLayers; m_validationLayers = nullptr; }
+  vkDestroyInstance(m_instance, nullptr);
 }
 
 
@@ -125,23 +140,21 @@ vkCtx::~vkCtx()
  *
  * written   : Aug 2023 (GKHuber)
 ************************************************************************************************************************/
-VkResult vkCtx::init(vkProperties properties, uint32_t* device)
+VkResult vkCtx::init(vkProperties properties, uint32_t* device, PFN_vkDebugUtilsMessengerCallbackEXT debugCallback)
 {
   VkResult res = VK_SUCCESS;
 
   VkApplicationInfo appInfo = {};
   VkInstanceCreateInfo createInfo = {};
+  VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {};
 
+  memset((void*)&appInfo, 0, sizeof(appInfo));
   appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
   appInfo.pApplicationName = "module 1";
   appInfo.applicationVersion = 1;
   appInfo.apiVersion = VK_MAKE_VERSION(1, 0, 0);
 
-  // we are using GLFW so if it needs any extensions, get them and add to Vulkan's extension list...
-  //uint32_t glfwExtensionCnt = 0;
-  //const char** glfwExtensionList;
-  //glfwExtensionList = glfwGetRequiredInstanceExtensions(&glfwExtensionCnt);
-
+  memset((void*)&createInfo, 0, sizeof(createInfo)); 
   createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
   createInfo.pApplicationInfo = &appInfo;
   createInfo.enabledExtensionCount = static_cast<uint32_t>(m_extensions.size());
@@ -149,11 +162,15 @@ VkResult vkCtx::init(vkProperties properties, uint32_t* device)
   if(m_debug)
   {
     createInfo.enabledLayerCount = m_cntLayers;
-    createInfo.ppEnabledLayerNames = const_cast<const char* const*>(&m_validationLayers);
+    createInfo.ppEnabledLayerNames = m_layers.data();
+
+    populateDebugMessengerCreateInfo(debugCreateInfo, debugCallback);
+    createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
   }
   else
   {
     createInfo.enabledLayerCount = 0;
+    createInfo.pNext = 0;
   }
 
   res = vkCreateInstance(&createInfo, nullptr, &m_instance);                            // create the vulkan instance 
@@ -270,7 +287,17 @@ uint32_t vkCtx::findSuitableDevice(vkProperties properties)
 }
 
 // device is index into physical device vector
-bool vkCtx::createLogicalDevice(uint32_t device)
+/************************************************************************************************************************
+ * function : 
+ *
+ * abstract  :
+ *
+ * parameters:
+ *
+ * returns   :
+ *
+ * written   : Aug 2023 (GKHuber)
+************************************************************************************************************************/bool vkCtx::createLogicalDevice(uint32_t device)
 {
   bool bRet = false;
 
@@ -294,9 +321,21 @@ bool vkCtx::createLogicalDevice(uint32_t device)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // debugging support
+/************************************************************************************************************************
+ * function : 
+ *
+ * abstract  :
+ *
+ * parameters:
+ *
+ * returns   :
+ *
+ * written   : Aug 2023 (GKHuber)
+************************************************************************************************************************/
 VkResult vkCtx::createDebugMessenger(PFN_vkDebugUtilsMessengerCallbackEXT debugCallback)
 {
   VkDebugUtilsMessengerCreateInfoEXT   createInfo = {};
+  memset((void*)&createInfo, 0, sizeof(createInfo));
   createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
   createInfo.messageSeverity = createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
   createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
@@ -310,14 +349,83 @@ VkResult vkCtx::createDebugMessenger(PFN_vkDebugUtilsMessengerCallbackEXT debugC
     return VK_ERROR_EXTENSION_NOT_PRESENT;
 }
 
+/************************************************************************************************************************
+ * function : 
+ *
+ * abstract  :
+ *
+ * parameters:
+ *
+ * returns   :
+ *
+ * written   : Aug 2023 (GKHuber)
+************************************************************************************************************************/
 void vkCtx::destroyDebugMessenger()
 {
-//  vkDestroyDebugUtilsMessengerEXT(m_instance, m_debugMessenger, nullptr);
-
   auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(m_instance, "vkDestroyDebugUtilsMessengerEXT");
   if (func != nullptr) 
   {
     func(m_instance, m_debugMessenger, nullptr);
+  }
+}
+
+
+/************************************************************************************************************************
+ * function : 
+ *
+ * abstract  :
+ *
+ * parameters:
+ *
+ * returns   :
+ *
+ * written   : Sep 2023 (GKHuber)
+************************************************************************************************************************/
+void vkCtx::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& debugCreateInfo,
+                                             PFN_vkDebugUtilsMessengerCallbackEXT debugCallback)
+{
+  if (m_debug)
+  {
+    VkDebugUtilsMessengerCreateInfoEXT    debugCreateInfo = {};
+    memset((void*)&debugCreateInfo, 0, sizeof(debugCreateInfo));
+    debugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    debugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    debugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    debugCreateInfo.pfnUserCallback = debugCallback;
+  }
+}
+
+
+
+/************************************************************************************************************************
+ * function  : setupDebugMessenger
+ *
+ * abstract  : This is a special debug messenger for dealing with instance creation and destruction.  All other debug
+ *             messages will be routed through m_debugMessenger.
+ *
+ * parameters: void 
+ *
+ * returns   : void 
+ *
+ * written   : Sep 2023 (GKHuber)
+************************************************************************************************************************/
+void vkCtx::setupDebugMessenger(PFN_vkDebugUtilsMessengerCallbackEXT debugCallback)
+{
+  if (m_debug)
+  {
+    VkDebugUtilsMessengerCreateInfoEXT  debugCreateInfo = {};
+    populateDebugMessengerCreateInfo(debugCreateInfo, debugCallback);
+
+    VkResult res = createDebugMessenger(debugCallback);
+
+    if (res == VK_SUCCESS)
+    {
+      std::cout << "[+] installed creation/destruction debug messenger" << std::endl;
+    }
+    else
+    {
+      std::cout << "[-] failed to install creation/destruction debug messenger" << std::endl;
+    }
   }
 }
 
@@ -366,7 +474,7 @@ void vkCtx::enumerateExtensions()
 {
   uint32_t extCnt = 0;
   vkEnumerateInstanceExtensionProperties(nullptr, &extCnt, nullptr);
-  m_extensions.resize(extCnt);
+  m_extensionList.resize(extCnt);
 
   vkEnumerateInstanceExtensionProperties(nullptr, &extCnt, m_extensionList.data());
 
@@ -379,7 +487,17 @@ void vkCtx::enumerateExtensions()
 }
 
 
-void vkCtx::printPhyDeviceInfo(uint32_t cntPDevices)
+/************************************************************************************************************************
+ * function : 
+ *
+ * abstract  :
+ *
+ * parameters:
+ *
+ * returns   :
+ *
+ * written   : Aug 2023 (GKHuber)
+************************************************************************************************************************/void vkCtx::printPhyDeviceInfo(uint32_t cntPDevices)
 {
   uint32_t ndx = 0;
 

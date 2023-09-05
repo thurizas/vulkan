@@ -31,9 +31,9 @@ typedef struct _vkProperties
 
 struct vkCtx
 {
-  vkCtx(std::vector<std::string>* pLayers, std::vector<const char*>*, GLFWwindow* pWindow, bool d = false);
+  vkCtx(std::vector<const char*>* pLayers, std::vector<const char*>*, GLFWwindow* pWindow, bool d = false);
   ~vkCtx();
-  VkResult     init(vkProperties, uint32_t* device);
+  VkResult     init(vkProperties, uint32_t* device, PFN_vkDebugUtilsMessengerCallbackEXT);
   VkInstance   instance() { return m_instance; }
   
   bool         createLogicalDevice(uint32_t dev = 0);           // create logical device
@@ -41,8 +41,12 @@ struct vkCtx
   VkResult     createDebugMessenger(PFN_vkDebugUtilsMessengerCallbackEXT);
   void         destroyDebugMessenger();
 
-  char*        getValidationLayers() { return m_validationLayers; }
-  uint32_t     getLayerCnt() { return m_cntLayers; }
+  void         populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT&, PFN_vkDebugUtilsMessengerCallbackEXT);
+  void         setupDebugMessenger(PFN_vkDebugUtilsMessengerCallbackEXT);
+
+
+  std::vector<const char*>  getValidationLayers() { return m_layers; }
+  uint32_t                  getLayerCnt() { return m_cntLayers; }
 
 private:
   bool                               m_debug;
@@ -54,7 +58,7 @@ private:
   VkSurfaceKHR                       m_surface;
   vkLogicalDevice*                   m_pLogicalDevice;
   VkDebugUtilsMessengerEXT           m_debugMessenger = nullptr;
-  char*                              m_validationLayers;
+  std::vector<const char*>           m_layers;
   std::vector<const char*>           m_extensions;
   std::vector<VkLayerProperties>     m_layerList;
   std::vector<VkExtensionProperties> m_extensionList;
