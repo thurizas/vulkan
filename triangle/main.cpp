@@ -25,16 +25,17 @@ int main(int argc, char** argv)
   initWindow(windowName, windowWidth, windowHeight, &window);
 
   vkContext    ctx(window, true);
-  ctx.initContext();
-
-  while (!glfwWindowShouldClose(window))
+  if (EXIT_SUCCESS == ctx.initContext())
   {
-    glfwPollEvents();
-  }
+    while (!glfwWindowShouldClose(window))
+    {
+      glfwPollEvents();
+    }
 
-  ctx.cleanupContext();
-  glfwDestroyWindow(window);
-  glfwTerminate();
+    ctx.cleanupContext();
+    glfwDestroyWindow(window);
+    glfwTerminate();
+  }
 
   return 0;
 }
