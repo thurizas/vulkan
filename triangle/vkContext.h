@@ -6,6 +6,9 @@
 
 #include <stdexcept>
 #include <vector>
+#include <set>
+#include <algorithm>
+#include <array>
 
 #include "utilities.h"
 
@@ -37,6 +40,11 @@ private:
     VkDevice          logical;
   } m_device;
 
+  // pipeline components
+  VkPipeline                  m_graphicsPipeline;
+  VkPipelineLayout            m_pipelineLayout;
+  VkRenderPass                m_renderPass;
+
   // Utility components
   VkFormat   m_swapChainImageFormat;
   VkExtent2D m_swapChainExtent;
@@ -47,7 +55,8 @@ private:
   void createDebugMessenger();
   void createLogicalDevice();
   void createSurface();
-  void createSwapChain();  
+  void createSwapChain(); 
+  void createRenderPass();
   void createGraphicsPipeline();
 
 
