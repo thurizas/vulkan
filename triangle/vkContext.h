@@ -35,6 +35,9 @@ private:
   VkSwapchainKHR              m_swapchain;
   std::vector<const char*>    m_instanceExtensions = std::vector<const char*>();
   std::vector<swapChainImage> m_swapChainImages;
+  std::vector<VkFramebuffer>  m_swapChainFrameBuffers;
+  std::vector<VkCommandBuffer> m_commandbuffers;
+
   struct {
     VkPhysicalDevice  physical;
     VkDevice          logical;
@@ -44,6 +47,9 @@ private:
   VkPipeline                  m_graphicsPipeline;
   VkPipelineLayout            m_pipelineLayout;
   VkRenderPass                m_renderPass;
+
+  //pools
+  VkCommandPool       m_graphicsCommandPool;
 
   // Utility components
   VkFormat   m_swapChainImageFormat;
@@ -58,7 +64,12 @@ private:
   void createSwapChain(); 
   void createRenderPass();
   void createGraphicsPipeline();
+  void createFramebuffers();
+  void createCommandPool();
+  void createCommandBuffers();
 
+  // Vulkan functions -- record functions
+  void recordcommands();
 
   // Vulkan functions - get functions
   void getPhysicalDevice();
@@ -75,11 +86,11 @@ private:
 
   // choose functions
   VkSurfaceFormatKHR chooseBestSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats); 
-  VkPresentModeKHR chooseBestPresentationMode(const std::vector<VkPresentModeKHR> presentationModes); 
-  VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& surfaceCapabilities); 
+  VkPresentModeKHR   chooseBestPresentationMode(const std::vector<VkPresentModeKHR> presentationModes); 
+  VkExtent2D         chooseSwapExtent(const VkSurfaceCapabilitiesKHR& surfaceCapabilities); 
 
   // generic create functions
-  VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags); 
+  VkImageView    createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags); 
   VkShaderModule createShaderModule(const std::vector<char>& code);
 };
 

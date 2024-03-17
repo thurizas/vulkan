@@ -1,4 +1,4 @@
-// NOTE: upto udemy code_3_swapchain_surface done.
+// NOTE: upto udemy code_6_pipeline_fixedfunction done.
 #include <iostream>
 #include <set>
 
@@ -94,6 +94,10 @@ int vkContext::initContext()
     createSwapChain();
     createRenderPass();
     createGraphicsPipeline();
+    createFramebuffers();
+    createCommandPool();
+    createCommandBuffers();
+    recordcommands();
   }
   catch (const std::runtime_error& e)
   {
@@ -106,6 +110,11 @@ int vkContext::initContext()
 
 void vkContext::cleanupContext()
 {
+  vkDestroyCommandPool(m_device.logical, m_graphicsCommandPool, nullptr);
+  for (auto framebuffer : m_swapChainFrameBuffers)
+  {
+    vkDestroyFramebuffer(m_device.logical, framebuffer, nullptr);
+  }
   vkDestroyPipeline(m_device.logical, m_graphicsPipeline, nullptr);
   vkDestroyPipelineLayout(m_device.logical, m_pipelineLayout, nullptr);
   vkDestroyRenderPass(m_device.logical, m_renderPass, nullptr);
@@ -531,7 +540,7 @@ void vkContext::createGraphicsPipeline()
   pipelineCreateInfo.layout = m_pipelineLayout;							        // Pipeline Layout pipeline should use
   pipelineCreateInfo.renderPass = m_renderPass;							        // Render pass description the pipeline is compatible with
   pipelineCreateInfo.subpass = 0;										                // Subpass of render pass to use with pipeline
-pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;	            // Existing pipeline to derive from...
+  pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;	          // Existing pipeline to derive from...
   pipelineCreateInfo.basePipelineIndex = -1;				                // or index of pipeline being created to derive from (in case creating multiple at once)
 
   // Create Graphics Pipeline
@@ -549,6 +558,126 @@ pipelineCreateInfo.basePipelineHandle = VK_NULL_HANDLE;	            // Existing 
   // module are no longer needed, so we can delete them here.
   vkDestroyShaderModule(m_device.logical, fragmentShaderModule, nullptr);
   vkDestroyShaderModule(m_device.logical, vertexShaderModule, nullptr);
+}
+
+void vkContext::createFramebuffers()
+{
+  m_swapChainFrameBuffers.resize(m_swapChainImages.size());              // one frame buffer per image
+
+  for (size_t i = 0; i < m_swapChainFrameBuffers.size(); i++)
+  {
+    std::array<VkImageView, 1> attachments = { m_swapChainImages[i].imageView };
+
+    VkFramebufferCreateInfo fbCreateInfo = {};
+    fbCreateInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    fbCreateInfo.renderPass = m_renderPass;
+    fbCreateInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
+    fbCreateInfo.pAttachments = attachments.data();
+    fbCreateInfo.width = m_swapChainExtent.width;
+    fbCreateInfo.height = m_swapChainExtent.height;
+    fbCreateInfo.layers = 1;
+
+    VkResult result = vkCreateFramebuffer(m_device.logical, &fbCreateInfo, nullptr, &m_swapChainFrameBuffers[i]);
+    if (result == VK_SUCCESS)
+    {
+      std::cerr << "[+] created " << i + 1 << " framebuffer" << std::endl;
+    }
+    else
+    {
+      std::cerr << "[-] failed to create " << i + 1 << "framebuffer" << std::endl;
+      throw std::runtime_error("failed to create framebuffer");
+    }
+  }
+}
+
+
+void vkContext::createCommandPool()
+{
+  queueFamilyIndices qfi = getQueueFamilies(m_device.physical, nullptr);
+
+  VkCommandPoolCreateInfo  poolInfo = {};
+  poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+  poolInfo.queueFamilyIndex = qfi.graphicsFamily;
+
+  VkResult result = vkCreateCommandPool(m_device.logical, &poolInfo, nullptr, &m_graphicsCommandPool);
+  if (result == VK_SUCCESS)
+  {
+    std::cerr << "[+] created command pool" << std::endl;
+  }
+  else
+  {
+    std::cerr << "[-] failed to create command pool" << std::endl;
+    throw std::runtime_error("failed to create commadn pool");
+  }
+}
+
+
+void vkContext::createCommandBuffers()
+{
+  m_commandbuffers.resize(m_swapChainFrameBuffers.size());       // one command buffer per frame buffer
+
+  VkCommandBufferAllocateInfo cbAllocInfo = {};
+  cbAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+  cbAllocInfo.commandPool = m_graphicsCommandPool;
+  cbAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+  cbAllocInfo.commandBufferCount = static_cast<uint32_t>(m_commandbuffers.size());
+
+  VkResult result = vkAllocateCommandBuffers(m_device.logical, &cbAllocInfo, m_commandbuffers.data());
+  if (result == VK_SUCCESS)
+  {
+    std::cerr << "[+] created command buffer " << std::endl;
+  }
+  else
+  {
+    std::cerr << "[-] failed to create command buffer" << std::endl;
+    throw std::runtime_error("failed to create command buffer");
+  }
+}
+
+
+void vkContext::recordcommands()
+{
+  // infomation about how to begin each command buffer
+  VkCommandBufferBeginInfo bufferBeginInfo = {};
+  bufferBeginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+  bufferBeginInfo.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT;
+
+  // infomation about how to begin render pass -- only for graphical apps
+  VkRenderPassBeginInfo renderBeginInfo = {};
+  renderBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+  renderBeginInfo.renderPass = m_renderPass;
+  renderBeginInfo.renderArea.offset = { 0, 0 };
+  renderBeginInfo.renderArea.extent = m_swapChainExtent;
+
+  VkClearValue clearValues[] = { 0.6f, 0.65f, 0.4f, 1.0f };
+  renderBeginInfo.pClearValues = clearValues;
+  renderBeginInfo.clearValueCount = 1;
+
+  for (size_t i = 0; i < m_commandbuffers.size(); i++)
+  {
+    renderBeginInfo.framebuffer = m_swapChainFrameBuffers[i];
+
+    VkResult  result = vkBeginCommandBuffer(m_commandbuffers[i], &bufferBeginInfo);
+    if (result != VK_SUCCESS)
+    {
+      throw std::runtime_error("failed to start recording a command buffer");
+    }
+
+    // begin render pass....
+    vkCmdBeginRenderPass(m_commandbuffers[i], &renderBeginInfo, VK_SUBPASS_CONTENTS_INLINE);
+
+    vkCmdBindPipeline(m_commandbuffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, m_graphicsPipeline);
+    vkCmdDraw(m_commandbuffers[i], 3, 1, 0, 0);
+
+    //...end render pass.
+    vkCmdEndRenderPass(m_commandbuffers[i]);
+
+    result = vkEndCommandBuffer(m_commandbuffers[i]);
+    if (result != VK_SUCCESS)
+    {
+      throw std::runtime_error("failed to stop recording a command buffer");
+    }
+  }
 }
 
 
