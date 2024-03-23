@@ -3,6 +3,8 @@
 
 #include <fstream>
 
+const int MAX_FRAME_DRAWS = 3;
+
 // SwapChain is an extension, need to see if it is supported.
 const std::vector<const char*> deviceExtensions = { VK_KHR_SWAPCHAIN_EXTENSION_NAME };
 

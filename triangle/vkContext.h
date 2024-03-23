@@ -19,12 +19,14 @@ public:
   ~vkContext();
 
   int initContext();
+  /* TODO */ void draw();
   void cleanupContext();
 
 
 private:
   GLFWwindow* m_pWindow;
   bool        m_useValidation;
+  int         m_currentFrame = 0;
 
   // Vulkan components
   VkDebugUtilsMessengerEXT    m_messenger;
@@ -55,6 +57,11 @@ private:
   VkFormat   m_swapChainImageFormat;
   VkExtent2D m_swapChainExtent;
 
+  // synchronisation
+  /* TODO */ std::vector<VkSemaphore>  m_imageAvailable;
+  /* TODO */ std::vector<VkSemaphore>  m_renderFinished;
+  /* TODO */ std::vector<VkFence>      m_drawFences;
+
   // Vulkan functions - create functions
   void createInstance();
   void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT&);
@@ -67,6 +74,7 @@ private:
   void createFramebuffers();
   void createCommandPool();
   void createCommandBuffers();
+  /* TODO */ void createSynchronisations();
 
   // Vulkan functions -- record functions
   void recordcommands();
