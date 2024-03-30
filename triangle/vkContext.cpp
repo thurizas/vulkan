@@ -11,11 +11,14 @@
  * function  : ctor
  *
  * abstract  : Constructs an instance of the vulkan context.  We perform the following tasks,
- *               (a) get a list of the extensions required by GLFW, and check that they exist
+ *               (a) get a list of the extensions required by GLFW
+ *               (b) add the requested layers to a list of required layers
+ *               (c) check that requested extensions are supported - if not throw runtime exception
+ *               (d) check that requested layers are supported - if not disable layer support
  *
  * parameters: pWindow -- [in] pointer to the GLFW window we will be rendering to
  *
- * returns   : 
+ * returns   : nothin
  *
  * written   : Mar 2024 (GKHuber)
 ************************************************************************************************************************/
@@ -58,7 +61,7 @@ vkContext::vkContext(GLFWwindow* pWindow, bool v) : m_pWindow(pWindow), m_useVal
  *
  * parameters: void
  *
- * returns   :
+ * returns   : nothing
  *
  * written   : Mar 2024 (GKHuber)
 ************************************************************************************************************************/
@@ -67,14 +70,26 @@ vkContext::~vkContext()
 
 }
 
+
+
 /************************************************************************************************************************
  * function  : initContext
  *
  * abstract  : The function constructs the actual instance of the context.  The following steps are performed:
  *               (a) create the vulkan instance
- *               (b) enumerate the physical devices and gets their properties
- *               (c) select the physical device that matches the application requirements
- *               (d) create a logical device
+ *               (b) create a debug messenger to display messages from various layers
+ *               (c) create surface that we will be rendering to
+ *               (d) enumerate the physical devices and gets their properties
+ *               (e) create a logical device to use as an interface to the selected physical device 
+ *               (f) create swapchain and the images that the swapchain will use
+ *               (g) create the render pass 
+ *               (h) create graphics pipeline
+ *               (i) create the framebuffer
+ *               (j) create the command pool
+ *               (k) create command buffers
+ *               (l) record commands to render the scene
+ *               (m) create synchronization objects to use along the graphics pipeline
+ *            If any of these steps fails, it will throw a runtime exception and the program will terminate.
  *
  * parameters: void
  *
@@ -109,6 +124,24 @@ int vkContext::initContext()
   return EXIT_SUCCESS;
 }
 
+
+
+/************************************************************************************************************************
+ * function  : draw 
+ *
+ * abstract  : Function to actually perform the drawing of the image, we perform the following steps
+ *              (a) wait for previous draw operation to complete -- wait for all fences to be cleared
+ *              (b) get next image to render to
+ *              (c) submit the command buffer to a command queue
+ *              (d) submit finished image to the present queue to show on screen
+ *             This functions throws a runtime exception if it fails
+ * 
+ * parameters: none
+ *
+ * returns   : void, throws runtime exceptions
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 void vkContext::draw()
 {
   vkWaitForFences(m_device.logical, 1, &m_drawFences[m_currentFrame], VK_TRUE, std::numeric_limits<uint64_t>::max());
@@ -132,11 +165,7 @@ void vkContext::draw()
   submitInfo.pSignalSemaphores = &m_renderFinished[m_currentFrame];
 
   VkResult result = vkQueueSubmit(m_graphicsQueue, 1, &submitInfo, m_drawFences[m_currentFrame]);
-  if (VK_SUCCESS == result)
-  {
-    std::cerr << "[+] sucessfully created submitted command to graphics queue" << std::endl;
-  }
-  else
+  if (VK_SUCCESS != result)
   {
     throw std::runtime_error("failed to command to graphics queue");
   }
@@ -151,11 +180,7 @@ void vkContext::draw()
   presentInfo.pImageIndices = &imageIndex;
 
   result = vkQueuePresentKHR(m_presentationQueue, &presentInfo);
-  if (VK_SUCCESS == result)
-  {
-    std::cerr << "[+] sucessfully presented image to presentation queue" << std::endl;
-  }
-  else
+  if (VK_SUCCESS != result)
   {
     throw std::runtime_error("failed to present image to presentation queue");
   }
@@ -165,6 +190,22 @@ void vkContext::draw()
 
 }
 
+
+
+/************************************************************************************************************************
+ * function  : cleanupContext
+ *
+ * abstract  : This function destroys all the Vulkan objects that we created.  Things are destroyed in reverse order that 
+ *             they were completed.  Prior to this function be called, it is necessary to make sure that all command queues
+ *             have been emptyed (use vkDeviceWaitIdle) otherwise we will get validation errors about attempting to destroy
+ *             objects that are in use, as well as not destroying objects.
+ *
+ * parameters: nothins
+ *
+ * returns   : void 
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 void vkContext::cleanupContext()
 {
   vkDeviceWaitIdle(m_device.logical);
@@ -196,6 +237,22 @@ void vkContext::cleanupContext()
   vkDestroyInstance(m_instance, nullptr);
 }
 
+
+
+/************************************************************************************************************************
+ * function  : createInstance
+ *
+ * abstract  : a Vulkan instance is used for various meta-information about the application - name, version number, number
+ *             of extensions required and number of layers being used (assuming validation is being performed).  While 
+ *             not explicitly involved in the rendering, the instance must be the first thing created (and the last to 
+ *             be destroyed)
+ *
+ * parameters: nothing
+ *
+ * returns   : void, throws runtime exception is instance creation fails.
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 void vkContext::createInstance()
 {
   VkApplicationInfo appInfo = { };
@@ -215,7 +272,11 @@ void vkContext::createInstance()
   if (m_useValidation)
   {
     VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo = {};
-    populateDebugMessengerCreateInfo(debugCreateInfo);
+    debugCreateInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+    debugCreateInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+    debugCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+    debugCreateInfo.pfnUserCallback = debugCallback;
+    debugCreateInfo.pUserData = nullptr;
 
     createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
     createInfo.ppEnabledLayerNames = validationLayers.data();
@@ -238,22 +299,32 @@ void vkContext::createInstance()
   }
 }
 
-void vkContext::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
-{
-  createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-  createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-  createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-  createInfo.pfnUserCallback = debugCallback;
-  createInfo.pUserData = nullptr;
-}
 
+
+/************************************************************************************************************************
+ * function  : createDebugMessenger
+ *
+ * abstract  : This creates a debug messenger that delievers messages from the validation layers to a specialized output
+ *             function so the messages are displayed. 
+ *
+ * parameters: none
+ *
+ * returns   : void, throws runtime exception if an error occurs
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 void vkContext::createDebugMessenger()
 {
   if (!m_useValidation) return;
     
   VkDebugUtilsMessengerCreateInfoEXT createInfo = {};
+  createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+  createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+  createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
+  createInfo.pfnUserCallback = debugCallback;
+  createInfo.pUserData = nullptr;
 
-  populateDebugMessengerCreateInfo(createInfo);
+  //populateDebugMessengerCreateInfo(createInfo);
   VkResult result = CreateDebugMessengerExt(m_instance, &createInfo, nullptr, &m_messenger);
   
   if (result == VK_SUCCESS)
@@ -268,6 +339,29 @@ void vkContext::createDebugMessenger()
 }
 
 
+
+/************************************************************************************************************************
+ * function  : createLogicalDevice
+ *
+ * abstract  : This function creates a logical device, an abstraction of the actual physical device, and is used to pass
+ *             commands down to the physical device.  The following tasks are performed
+ *               (a) get the queue families that the physical device supports and stores the indicies of the required 
+ *                   queue familys in the structure `queueFamilyIndices'.  The types of queue are determined by the needs
+ *                   of the application.  This application requires graphics, transfer, and presentation queues.  Note 
+ *                   that the Vulkan standard requires that a graphics queue supports a transfre queue
+ *               (b) creates a 'vkDeviceQueueCreateInfo' for each queue needed, and builds a buffer of required queues, this
+ *                   is passed on the the logical device create function.  The logical device create function will take
+ *                   care of creating the necessary queues => we do not need to destroy the queues.
+ *               (c) also, if the application requires any specific features from the physical device, the physical device
+ *                   is queried to ensure that those features are supported.  This application does not require any
+ *                   special features.
+ *
+ * parameters: none
+ *
+ * returns   : void, throws runtime exception if an error happens.
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 void vkContext::createLogicalDevice()
 {
   queueFamilyIndices indices = getQueueFamilies(m_device.physical, nullptr);
@@ -312,6 +406,19 @@ void vkContext::createLogicalDevice()
 }
 
 
+
+/************************************************************************************************************************
+ * function  : createSurface
+ *
+ * abstract  : This function will create the surface will be rendered to.  This is highly dependant on the window manager
+ *             that we are using (GLFW), so we just us a convience function from GLFW to create a correct surface
+ *
+ * parameters: none
+ *
+ * returns   : void, throws a runtime error on failure
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 void vkContext::createSurface()
 {
   VkResult result = glfwCreateWindowSurface(m_instance, m_pWindow, nullptr, &m_surface);
@@ -325,6 +432,28 @@ void vkContext::createSurface()
   }
 }
 
+
+
+/************************************************************************************************************************
+ * function  : createSwapchain
+ *
+ * abstract  : THe swapchain is a circular buffer of images that are rendered to, and presented from.  At its simplese,
+ *             one image is being presented while the second is be rendered to (double-buffering).  With Vulkan there 
+ *             can be an arbitrary (with in reason) number of images.  The following steps are preformaed
+ *                (a) get the details of the swapchain as defined by the physical device
+ *                (b) choose the best surface format the window manager supplies based on what the device supports.
+ *                (c) choose the best presenatation mode that the window manager supports base on that the device does.
+ *                (d) get the extent (dimensions) of the images
+ *                (e) determine the minimum and maximum number of images that the swap chain must have 
+ *                (f) if the swap chain was created sucessfully, create an array of images that will be used with
+ *                    the swap chain.
+ *
+ * parameters: none
+ *
+ * returns   : void, throws run-time exception on error.
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 void vkContext::createSwapChain()
 {
   SwapChainDetails swapChainDetails = getSwapChainDetails(m_device.physical);
@@ -406,6 +535,21 @@ void vkContext::createSwapChain()
 }
 
 
+
+/************************************************************************************************************************
+ * function  : createRenderPass
+ *
+ * abstract  : The render pass is used to describe how the image is rendered.  Along the render pass the image is transformed
+ *             from on format to another depending on what stage the render pass is in.  We can defince actions that must 
+ *             occur on load (image is being loaded) or store (image is being written too memory).  We can also define 
+ *             subpasses that are used to inforce temporal constraints - i.e. action 1 must occure befor action 2 starts.
+ *
+ * parameters: none
+ *
+ * returns   : void, thows run time exception on error
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 void vkContext::createRenderPass()
 {
   VkAttachmentDescription  colorAttachment = {};
@@ -474,6 +618,32 @@ void vkContext::createRenderPass()
 }
 
 
+
+/************************************************************************************************************************
+ * function  : createGraphicsPipeline
+ *
+ * abstract  : This functions specifies the layout of the graphics pipeline - both the programable stages and the fixed-
+ *             function stages.  The following operations are preformed
+ *               (a) pre-compiled shaders (compiled by glslangValidator.exe to *.spv files) are loaded and modules are 
+ *                   created for each of them
+ *               (b) create create-info structures for each compone of the pipeline, these are
+ *                   - vertex input (will be modified to support VAO/VBO/IBO later
+ *                   - inpu assembly
+ *                   - viewport and scissor
+ *                   - rasterizer
+ *                   - multisampling
+ *                   - blending
+ *               (c) create the graphics pipline layout.  Will be modified to support decriptor sets, push constants 
+ *                   later
+ *               (d) create the graphics pipeline.  The create info structure will use points to all of the above create 
+ *                   info structures we defined -- thus destroying the pipeline will destroy all of the subordinate stages
+ *
+ * parameters: none
+ *
+ * returns   : void, throws run-time exception on error
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 void vkContext::createGraphicsPipeline()
 {
   auto vertexShaderCode = readFile("./Shaders/vert.spv");
@@ -626,6 +796,21 @@ void vkContext::createGraphicsPipeline()
   vkDestroyShaderModule(m_device.logical, vertexShaderModule, nullptr);
 }
 
+
+
+/************************************************************************************************************************
+ * function  : createFramebuffers 
+ *
+ * abstract  : Create a number of frame buffers that correspond to the number of images that we have in the swapchain.
+ *             The only correlation is that the i-th frame buffer corresponds to the i-th image.  We are responsible for 
+ *             ensuring that this correlation is not broken
+ *
+ * parameters: none
+ *
+ * returns   : void, throws run-time exception on error
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 void vkContext::createFramebuffers()
 {
   m_swapChainFrameBuffers.resize(m_swapChainImages.size());              // one frame buffer per image
@@ -657,6 +842,18 @@ void vkContext::createFramebuffers()
 }
 
 
+
+/************************************************************************************************************************
+ * function  : createCommandPool
+ *
+ * abstract  : This creates a specialized memory pool that is used to allocate command buffers from.
+ *
+ * parameters: none
+ *
+ * returns   : void, throws runtime exception on error.
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 void vkContext::createCommandPool()
 {
   queueFamilyIndices qfi = getQueueFamilies(m_device.physical, nullptr);
@@ -678,6 +875,21 @@ void vkContext::createCommandPool()
 }
 
 
+
+/************************************************************************************************************************
+ * function  : createCommandBuffers
+ *
+ * abstract  : This function creates a new command buffer associated with each frame-buffer (and thus each swapchain 
+ *             image).  The correlation is based on the index into each of these arrays, and it is up to use to insure 
+ *             that this correlation is maintained
+ * 
+ *
+ * parameters: none
+ *
+ * returns   : void, throws run time exception
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 void vkContext::createCommandBuffers()
 {
   m_commandbuffers.resize(m_swapChainFrameBuffers.size());       // one command buffer per frame buffer
@@ -702,6 +914,21 @@ void vkContext::createCommandBuffers()
 
 
 
+/************************************************************************************************************************
+ * function  : createSynchronisations 
+ *
+ * abstract  : Creates the various synchronisation objects used during the rendering.  We maintain three arrays for the 
+ *             synchronisation objects to avoid run away generation of these objects (and thus a slow memory leak).  We
+ *             use two semaphore (obects that we create, but are only visible to the GPU) to control access during the 
+ *             graphics processing and one fense (objects that we create, but are visible by the CPU) to control access
+ *             to the drawing function
+ *
+ * parameters: none
+ *
+ * returns   : void, throw run-time exception on error
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 void vkContext::createSynchronisations()
 {
   m_imageAvailable.resize(MAX_FRAME_DRAWS);
@@ -729,6 +956,20 @@ void vkContext::createSynchronisations()
 }
 
 
+
+/************************************************************************************************************************
+ * function  : recordCommands
+ *
+ * abstract  : This function records the commands that will be executed by a queue when the buffer is submitted to the
+ *             queue.  Seeing as how this is just recording the commands, it is very efficient and can be called multiple
+ *             time without a performace penality (unlike submitting to a queue where the commands are actually executed)
+ *
+ * parameters: none
+ *
+ * returns   : void, throws runtime exception
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 void vkContext::recordcommands()
 {
   // infomation about how to begin each command buffer
@@ -778,6 +1019,21 @@ void vkContext::recordcommands()
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Vulkan functions - get functions
+/************************************************************************************************************************
+ * function  : getPhysicalDevice
+ *
+ * abstract  : This function determines which physical device will be used by this application.  It performs the following
+ *             steps;
+ *               (a) enumerates all physical devices this instance of Vulkan can see (depends on m_instance)
+ *               (b) build a buffer of VkPhysicalDevices (an opaque pointer to the device)
+ *               (c) iterates over all devices looking for an acceptable device 
+ *
+ * parameters: none
+ *
+ * returns   : void, throws run-time exception on error
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 void vkContext::getPhysicalDevice()
 {
   uint32_t deviceCnt = 0;
@@ -809,8 +1065,28 @@ void vkContext::getPhysicalDevice()
 }
 
 
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // support functions - checker functions
+/************************************************************************************************************************
+ * function  : checkInstanceExtensionsSupport 
+ *
+ * abstract  : This function checks to see if all requested extensions are supported by the instance of Vulkan.  The steps
+ *             are;
+ *                (a) get the number of extensions supported (extensionCnt)
+ *                (b) allocate a buffer of VkExtensionProperties large enough to hold all extensions
+ *                (c) iterate through the list of requested extensions, comparing their name to the name of each found
+ *                    extention.  If names match, go on to next requested extension.  If we exhaust all the supported 
+ *                    extentions and did not have a match return false.
+ *                (d) if we found all requested extentions return true
+ *             The list of requested extensions (m_instanceExtensions) is constructed in the class constructor.
+ *
+ * parameters: none
+ *
+ * returns   : bool, true if all requested extensions are found, false otherwise
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 bool vkContext::checkInstanceExtensionSupport()
 {
   uint32_t extensionCnt = 0;
@@ -846,6 +1122,30 @@ bool vkContext::checkInstanceExtensionSupport()
   return true;
 }
 
+
+
+/************************************************************************************************************************
+ * function  : checkDeviceExtensionSupport 
+ *
+ * abstract  : This function checks to see is a device supports a given extension.  The steps that are followed are;
+ *                (a) get the number of extensions supported (extensionCount)
+ *                (b) allocate a buffer of VkExtensionProperties large enough to hold all extensions
+ *                (c) iterate through the list of requested extensions, comparing their name to the name of each found
+ *                    extention.  If names match, go on to next requested extension.  If we exhaust all the supported 
+ *                    extentions and did not have a match return false.
+ *                (d) if we found all requested extentions return true
+ *             The list of requested extensions (deviceExtensions) is a global variable defined in utilities.h.  It 
+ *             is necessary due to swapchain being an extension.  The macro `VK_KHR_SWAPCHAIN_EXTENSION_NAME' resolves 
+ *             to the Khronos name for the extension.
+ * 
+ *
+ * parameters: dev -- [in] an opaque pointer to a VkPhysicalDevice type that represents the particular device being 
+ *                    queried.
+ *
+ * returns   : bool - true if the device supports all of the requested extensions, false otherwise.
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 bool vkContext::checkDeviceExtensionSupport(VkPhysicalDevice dev)
 {
   // Get device extension count
@@ -884,6 +1184,27 @@ bool vkContext::checkDeviceExtensionSupport(VkPhysicalDevice dev)
   return true;
 }
 
+
+
+/************************************************************************************************************************
+ * function  : checkValidationLayerSupport
+ *
+ * abstract  : This function checks to see if the requested validation layers are supported by the instance of Vulkan.  
+ *             The requested validation layers are stored in `validationLayers' is a file-scoped variable defined in 
+ *             vkContext.h.  The steps are;
+  *               (a) get the number of layers supported (validationLayerCnt)
+ *                (b) allocate a buffer of VkExtensionProperties large enough to hold all layers
+ *                (c) iterate through the list of requested layers, comparing their name to the name of each found
+ *                    layer.  If names match, go on to next requested layer.  If we exhaust all the supported 
+ *                    layer and did not have a match return false.
+ *                (d) if we found all requested layers return true.
+ *
+ * parameters: none
+ *
+ * returns   : bool - true if all requested validation layers are found, false otherwise
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 bool vkContext::checkValidationLayerSupport()
 {
   uint32_t validationLayerCnt;
@@ -922,16 +1243,31 @@ bool vkContext::checkValidationLayerSupport()
 }
 
 
+
+/************************************************************************************************************************
+ * function  : checkDeviceSuitable
+ *
+ * abstract  : This checks if a device is suitable.  Suitability is determined if the device supports the required queues,
+ *             and the supports the required extentions, and the device supports a swapchain.  We perform;
+ *               (a) query the device properties
+ *               (b) get the queue indicies that the device supports, the indices are stored in queueFamilyIndices
+ *               (c) check if the device supports the required extensions
+ *               (d) check if the device supports a swapchain
+ *               (e) return true if steps b,c, and d all return true, false otherwise.
+ *             if the application requiresspecial features form the device, they can be checked here as well.
+ *
+ * parameters: dev -- [in] opaque pointer to a VkPhysicalDevice structure for the device we are testing.
+ *
+ * returns   : bool -- true if the device is suitable, false otherwise.
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 bool vkContext::checkDeviceSuitable(VkPhysicalDevice dev)
 {
   VkQueueFamilyProperties queueProperties;
   
   VkPhysicalDeviceProperties devProperties;
   vkGetPhysicalDeviceProperties(dev, &devProperties);
-
-  //VkPhysicalDeviceFeatures devFeatures;
-  //vkGetPhysicalDeviceFeatures(dev, &devFeatures);
-  
 
   queueFamilyIndices indices = getQueueFamilies(dev, &queueProperties);
 
@@ -962,6 +1298,30 @@ bool vkContext::checkDeviceSuitable(VkPhysicalDevice dev)
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // Support functions - getter functions.
+/************************************************************************************************************************
+ * function  : getQueueFamilies 
+ *
+ * abstract  : This function get the queue families that a device supports.  A device may have multiple queues of a given
+ *             type, these queues are stored in a buffer of queues of a particular family.  This functions deals with the 
+ *             family type and queries it's properties and returns the index into the buffer of queues where the family is.
+ *             In the structure queueFamilyIndices, we store the index for the family that we need (graphics and presentation).
+ *             Both of these are initally set ot -1 and the function `isValid::queueFamilyIndices' returns true if both of
+ *             the indexs are >= 0 (i.e. we found the family located at the given index.  The steps are;
+ *               (a) get the number of queue families on the device (queueFamilyCnt)
+ *               (b) allocate a buffer able to hold queueFamilyCnt number of VkQueFamilyProperties.
+ *               (c) get the properties of each queue family.
+ *               (d) for each family see if the graphics bit or the presentation bit is set, store the queue family 
+ *                   index in the appropriate member variable.
+ *
+ * parameters: dev -- [in] obaque pointer to a VkPhysicalDevice that we are testing
+ *             pProp -- [out] optional parameter, default value of nullptr
+                              pointer to a VkQueueFamilyProperties that is populateded with the results of queueFamily
+                              (a properties for a specific, conforming queue family)
+ *
+ * returns   : queueFamilyIndices structure.
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 queueFamilyIndices vkContext::getQueueFamilies(VkPhysicalDevice dev, VkQueueFamilyProperties* pProp)
 {
   queueFamilyIndices indices;
@@ -1001,6 +1361,21 @@ queueFamilyIndices vkContext::getQueueFamilies(VkPhysicalDevice dev, VkQueueFami
   return indices;
 }
 
+
+/************************************************************************************************************************
+ * function  :  getSwapChainDetails
+ *
+ * abstract  : Gets the properties that a swapchain must support.  This functions calls the following functions,
+ *               (a) vkGetPhysicalDeviceSurfaceCapabilitiesKHR
+ *               (b) vkGetPhysicalDeviceSurfaceFormatsKHR
+ *               (c) vkGetPhysicalDeviceSurfacePresentationModesKHR
+ *
+ * parameters: dev -- [in] opaque pointer to the device being tested.
+ *
+ * returns   : a SwapChainDetails structure
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 SwapChainDetails vkContext::getSwapChainDetails(VkPhysicalDevice dev)
 {
   SwapChainDetails swapChainDetails;
@@ -1031,6 +1406,22 @@ SwapChainDetails vkContext::getSwapChainDetails(VkPhysicalDevice dev)
 }
 
 
+/************************************************************************************************************************
+ * function  : chooseBestSurfaceFormat 
+ *
+ * abstract  : This attempts to find the best format to use.  Note: if only format is 'VK_FORMAT_UNDEFINED' means all
+ *             formats are available so pick one and move on.  Otherwise check each format that is defined looking for 
+ *             a format that has;
+ *                 VK_FORMAT_R8G8B8A8_UNORM  _or_ VK_FORMAT_B8G8R8A8_UNORM
+ *          _and_  VKVK_COLOR_SPACE_SRGB_NONLINEAR_KHR
+ *             and return that format, obvisouly the exact values will be application specific.
+ *
+ * parameters: formats -- [in] reference to a vector of VkSurfaceFormatKHR types.
+ *
+ * returns   : an instacne of VkSurfaceFormatKHR containing the format of the surface to use.
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 VkSurfaceFormatKHR vkContext::chooseBestSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& formats)
 {
   // if only format is undefines, means all formats are available, pick one
@@ -1053,6 +1444,20 @@ VkSurfaceFormatKHR vkContext::chooseBestSurfaceFormat(const std::vector<VkSurfac
 }
 
 
+
+/************************************************************************************************************************
+ * function  : chooseBestPresentationMode
+ *
+ * abstract  : attempts to choose the best presentation mode to use,  if we find 'VK_PRESENT_MODE_MAILBOX_KHR' use it 
+ *             otherwise use VK_PRESENT_MODE_FIFO_KHR (which compliant Vulkan implementations must support)
+ *
+ * parameters: presentationModes -- [in] vector of VkPresentModeKHR types with the presentation modes that the device 
+ *                                  supports
+ *
+ * returns   : VkPresentModeKHR value representing the optimal presentation mode.
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 VkPresentModeKHR vkContext::chooseBestPresentationMode(const std::vector<VkPresentModeKHR> presentationModes)
 {
  // look for mailbox presentation mode -- prevents tearing
@@ -1068,6 +1473,23 @@ VkPresentModeKHR vkContext::chooseBestPresentationMode(const std::vector<VkPrese
 }
 
 
+
+/************************************************************************************************************************
+ * function  : chooseSwapExtent
+ *
+ * abstract  : This function sets the size of each swapchain image.  if the current extent width is greater then the max
+ *             size of a uint32_t then the size can vary so just return the current extent.  Otherwise we will need to 
+ *             set it manually by doing,
+ *                (a) get the frame buffer size (from GLFW) and set the new extent dimensions to match this value
+ *                (b) clamp the new values between the min and max as described from the surface capabilities.
+ *
+ * parameters: surfaceCapabilities -- [in] reference to a const VkSurfaceCapabilitiesKHR structure contain the min and max
+ *                                    height and width of an swapchain image
+ *
+ * returns   : VkExtent2D structure with the width and length values.
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 VkExtent2D vkContext::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& surfaceCapabilities)
 {
   // if current extent is at numeric limit, then extent can vary, else need to manually set
@@ -1095,6 +1517,20 @@ VkExtent2D vkContext::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& surfaceCa
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // generic create functions
+/************************************************************************************************************************
+ * function  : createImageView
+ *
+ * abstract  : This function creates an view for use with the swapchain image.  A single view is created for each image 
+ *             in the swapchain.
+ *
+ * parameters: image -- [in] swapchain image to create a view for
+ *             format -- [in] format to use to create the view.
+ *             aspectFlags -- [in] properties of the view.
+ * 
+ * returns   : VkImageView structure
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 VkImageView vkContext::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags)
 {
   VkImageViewCreateInfo viewCreateInfo = {};
@@ -1130,6 +1566,17 @@ VkImageView vkContext::createImageView(VkImage image, VkFormat format, VkImageAs
 }
 
 
+/************************************************************************************************************************
+ * function  : createShaderModule
+ *
+ * abstract  : converts the byte-code for a shader into a module.
+ *
+ * parameters: code -- [in] buffer containing the byte-code for a module
+ *
+ * returns   : VkShaderModule reference, throws a runtime exception on error.
+ *
+ * written   : Mar 2024 (GKHuber)
+************************************************************************************************************************/
 VkShaderModule vkContext::createShaderModule(const std::vector<char>& code)
 {
   VkShaderModuleCreateInfo  shaderModuleCreateInfo = {};

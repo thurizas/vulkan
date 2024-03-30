@@ -58,13 +58,12 @@ private:
   VkExtent2D m_swapChainExtent;
 
   // synchronisation
-  /* TODO */ std::vector<VkSemaphore>  m_imageAvailable;
-  /* TODO */ std::vector<VkSemaphore>  m_renderFinished;
-  /* TODO */ std::vector<VkFence>      m_drawFences;
+ std::vector<VkSemaphore>  m_imageAvailable;
+ std::vector<VkSemaphore>  m_renderFinished;
+ std::vector<VkFence>      m_drawFences;
 
   // Vulkan functions - create functions
   void createInstance();
-  void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT&);
   void createDebugMessenger();
   void createLogicalDevice();
   void createSurface();
@@ -74,7 +73,7 @@ private:
   void createFramebuffers();
   void createCommandPool();
   void createCommandBuffers();
-  /* TODO */ void createSynchronisations();
+  void createSynchronisations();
 
   // Vulkan functions -- record functions
   void recordcommands();
