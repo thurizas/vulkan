@@ -58,7 +58,7 @@ int main(int argc, char** argv)
     float  deltaTime = 0.0f;            // time elapse since the last image was drawn
     float  lastTime = 0.0f;             // time last render occured at.
 
-    int helicopter = ctx.createMeshModel("./Models/Seahawk.obj");
+    int helicopter = ctx.createMeshModel("./Models/uh60.obj");
 
     while (!glfwWindowShouldClose(window))
     {
@@ -72,8 +72,10 @@ int main(int argc, char** argv)
       angle += 10.0f * deltaTime;              // update angle, scaled to elapsed time
       if (angle > 360.0f) { angle -= 360.0; }  // clamp angle in range [0,360)
 
-      glm::mat4 testMat = glm::scale(glm::mat4(1.0), glm::vec3(0.05f, 0.05f, 0.05f));
-      testMat = glm::rotate(testMat, glm::radians(angle), glm::vec3(0.0f, 1.0f, 0.0f));
+      glm::mat4 testMat = glm::scale(glm::mat4(1.0), glm::vec3(0.4f, 0.4f, 0.4f));
+      testMat = glm::rotate(testMat, glm::radians(-90.0f), glm::vec3(1.0f, 0.0f, 0.0f));
+      //testMat = glm::rotate(testMat, glm::radians(angle), glm::vec3(0.0f, 1.0f, 0.0f));
+      testMat = glm::rotate(testMat, glm::radians(angle), glm::vec3(0.0f, 0.0f, 1.0f));
       ctx.updateModel(helicopter, testMat);
 
       ctx.draw();

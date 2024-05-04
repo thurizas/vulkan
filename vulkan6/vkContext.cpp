@@ -131,7 +131,7 @@ int vkContext::initContext()
     createSynchronisations();
 
     m_uboVP.proj = glm::perspective(glm::radians(45.0f), (float)m_swapChainExtent.width / (float)m_swapChainExtent.height, 0.1f, 100.0f);
-    m_uboVP.view = glm::lookAt(glm::vec3(10.0f, 0.0f, 2.0f), glm::vec3(0.0f, 0.0f,-2.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    m_uboVP.view = glm::lookAt(glm::vec3(10.0f, 0.0f, 2.0f), glm::vec3(0.0f, 0.0f,0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
     //m_uboVP.view = glm::lookAt(glm::vec3(-2.5f, 0.0f, 3.5f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
     m_uboVP.proj[1][1] *= -1;               // vulkan reverses the direction of the y-axis
