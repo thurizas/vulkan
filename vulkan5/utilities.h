@@ -9,6 +9,8 @@
 
 #include <glm/glm.hpp>
 
+#include <cstring>
+
 const int MAX_FRAME_DRAWS = 2;
 const int MAX_OBJECTS = 2;
 

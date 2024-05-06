@@ -8,6 +8,7 @@
 #include <iostream>
 
 #include <glm/glm.hpp>
+#include <string.h>
 
 const int MAX_FRAME_DRAWS = 3;
 

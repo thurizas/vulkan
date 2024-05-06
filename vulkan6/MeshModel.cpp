@@ -52,8 +52,10 @@ void MeshModel::destroyMeshModel()
 std::vector <std::string> MeshModel::LoadMaterials(const aiScene* scene)
 {	
 	// Create 1:1 sized list of textures
-	std::vector<std::string> textureList(scene->mNumMaterials);
-
+  std::vector<std::string> textureList(scene->mNumMaterials);
+  
+  std::cerr << "[?] found " << scene->mNumMaterials << " texture files" << std::endl;
+	
 	// Go through each material and copy its texture file name (if it exists)
 	for (size_t i = 0; i < scene->mNumMaterials; i++)
 	{
@@ -75,6 +77,10 @@ std::vector <std::string> MeshModel::LoadMaterials(const aiScene* scene)
 				std::string fileName = std::string(path.data).substr(idx + 1);
 
 				textureList[i] = fileName;
+			}
+			else
+			{
+			  std::cerr << "[?-] failed to load texture file " << std::string(path.data) << std::endl;
 			}
 		}
 	}

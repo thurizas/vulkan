@@ -6,6 +6,8 @@
 
 #include <glm/glm.hpp>
 
+#include "string.h"
+
 const int MAX_FRAME_DRAWS = 3;
 
 // SwapChain is an extension, need to see if it is supported.

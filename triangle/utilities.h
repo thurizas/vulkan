@@ -2,6 +2,7 @@
 #define _utilities_h_
 
 #include <fstream>
+#include <string.h>
 
 const int MAX_FRAME_DRAWS = 3;
 

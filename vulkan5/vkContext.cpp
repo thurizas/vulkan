@@ -1,6 +1,8 @@
 #include <iostream>
 #include <set>
 
+#include <cstring>
+
 #include "vkContext.h"
 #include "vkValidations.h"
 #include "mesh.h"
